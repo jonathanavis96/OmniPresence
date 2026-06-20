@@ -116,9 +116,26 @@ if(OMNIPRESENCE_WITH_DISCORD)
             "Discord Social SDK not found at ${DISCORD_SDK_ROOT}. "
             "Run scripts/setup-dev or set DISCORD_SDK_ROOT manually.")
     endif()
+
+    # SDK layout (v1.9): the import lib is discord_partner_sdk.lib under
+    # lib/<config>/ and the runtime DLL is bin/<config>/discord_partner_sdk.dll.
+    set(DISCORD_LIB_DIR "${DISCORD_SDK_ROOT}/lib/$<IF:$<CONFIG:Debug>,debug,release>")
+    set(DISCORD_BIN_DIR "${DISCORD_SDK_ROOT}/bin/$<IF:$<CONFIG:Debug>,debug,release>")
+
     target_include_directories(omnipresence PRIVATE "${DISCORD_SDK_ROOT}/include")
-    target_link_directories(omnipresence PRIVATE "${DISCORD_SDK_ROOT}/lib")
-    target_link_libraries(omnipresence PRIVATE discord_social_sdk)  # TODO: verify exact lib name
+    target_link_directories(omnipresence PRIVATE "${DISCORD_LIB_DIR}")
+    target_link_libraries(omnipresence PRIVATE discord_partner_sdk)
+
+    # discordpp.h is a single-header lib: its method bodies compile only in the
+    # one TU that defines DISCORDPP_IMPLEMENTATION (see discord_sdk_impl.cpp).
+    target_sources(omnipresence PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/discord_sdk_impl.cpp")
+
+    # Copy the SDK DLL next to the executable so it loads at runtime.
+    add_custom_command(TARGET omnipresence POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${DISCORD_BIN_DIR}/discord_partner_sdk.dll"
+            "$<TARGET_FILE_DIR:omnipresence>"
+        COMMENT "Copying discord_partner_sdk.dll next to omnipresence.exe")
 endif()
 
 # ── Compiler warnings ─────────────────────────────────────────────────────────
