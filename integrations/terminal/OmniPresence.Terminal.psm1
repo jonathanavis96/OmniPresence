@@ -36,6 +36,18 @@ $script:Config = @{
 $script:LastSentTime = [datetime]::MinValue
 $script:LastActivity = $null
 
+# Shared HttpClient for non-blocking fire-and-forget POSTs. We must NOT use a raw
+# ThreadPool thread to run Invoke-RestMethod: a ThreadPool thread has no
+# PowerShell runspace, so the cmdlet cannot execute and the resulting unhandled
+# exception terminates the whole shell process. HttpClient.PostAsync is pure .NET
+# async I/O — it returns immediately and needs no runspace.
+Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
+$script:HttpClient = [System.Net.Http.HttpClient]::new()
+$script:HttpClient.Timeout = [TimeSpan]::FromSeconds(3)
+# Send the body immediately instead of waiting for a "100 Continue" from the
+# server (pointless round-trip on loopback; also simplifies the receiver).
+$script:HttpClient.DefaultRequestHeaders.ExpectContinue = $false
+
 # ---------------------------------------------------------------------------
 # Secret-pattern redaction
 # ---------------------------------------------------------------------------
@@ -49,6 +61,17 @@ $script:SecretPatterns = @(
     '^ghp_[A-Za-z0-9]{36,}$',           # GitHub personal access token
     '^xox[baprs]-[A-Za-z0-9\-]{10,}$',  # Slack token
     '^[A-Fa-f0-9]{40,}$'                # long hex string (API key / hash)
+)
+
+# Tools whose first positional token is a sub-command (safe to surface) rather
+# than a private argument. For anything not in this set we report the verb alone.
+$script:SubcommandVerbs = @(
+    'git','docker','docker-compose','kubectl','helm','npm','yarn','pnpm','bun',
+    'cargo','go','rustup','gh','glab','az','aws','gcloud','heroku','flyctl','wrangler',
+    'pip','pip3','poetry','uv','conda','python','python3','dotnet','mvn','gradle','sbt',
+    'archivebox','terraform','pulumi','ansible','systemctl','service','brew','apt',
+    'apt-get','dnf','yum','pacman','choco','winget','scoop','make','just','task',
+    'composer','rails','bundle','php','node','deno','npx','rake','dvc','pre-commit'
 )
 
 <#
@@ -84,8 +107,9 @@ function ConvertTo-SafeCommandSummary {
         return $null
     }
 
-    # Tokenise on whitespace (simple; doesn't parse quotes, but safe enough)
-    $tokens = $RawCommand.Trim() -split '\s+' | Where-Object { $_ -ne '' }
+    # Tokenise on whitespace (simple; doesn't parse quotes, but safe enough).
+    # Wrap in @() so a single-token command stays an array under StrictMode.
+    $tokens = @($RawCommand.Trim() -split '\s+' | Where-Object { $_ -ne '' })
 
     if ($tokens.Count -eq 0) {
         return $null
@@ -93,34 +117,38 @@ function ConvertTo-SafeCommandSummary {
 
     $verb = $tokens[0]
 
-    # Gather up to two safe positional arguments to make the summary legible
-    $safeArgs = @()
-    foreach ($tok in ($tokens | Select-Object -Skip 1)) {
-        # Skip flags
-        if ($tok -match '^-') { continue }
+    # Keep ONLY the verb plus, for known sub-command-style tools, the first clean
+    # sub-command word (e.g. "git commit", "archivebox add"). We deliberately do
+    # NOT include arbitrary positional arguments because they routinely carry
+    # private data: URLs, file paths, commit messages, hostnames. For tools whose
+    # first positional is an argument rather than a sub-command (ssh <host>,
+    # cat <file>, cd <dir>), we report the verb alone.
+    $subcommand = $null
+    $verbKey = (Split-Path -Leaf $verb).ToLowerInvariant()
+    if ($script:SubcommandVerbs -contains $verbKey) {
+        $prevWasFlag = $false
+        foreach ($tok in ($tokens | Select-Object -Skip 1)) {
+            # Flags: skip, and remember so we can drop the flag's value next.
+            if ($tok -match '^-') { $prevWasFlag = $true; continue }
+            # Token directly after a flag is that flag's value — never include it.
+            if ($prevWasFlag) { $prevWasFlag = $false; continue }
 
-        # Check if the token looks like a secret
-        $looksSecret = $false
-        foreach ($pattern in $script:SecretPatterns) {
-            if ($tok -match $pattern) {
-                $looksSecret = $true
-                break
+            # First positional decides the summary. Keep only a plain sub-command
+            # word; anything else (URL, path, message, secret) is dropped + stop.
+            $looksSecret = $false
+            foreach ($pattern in $script:SecretPatterns) {
+                if ($tok -match $pattern) { $looksSecret = $true; break }
             }
+            if (-not $looksSecret -and
+                $tok.Length -le 32 -and
+                $tok -match '^[A-Za-z][A-Za-z0-9_:-]*$') {
+                $subcommand = $tok
+            }
+            break
         }
-        if ($looksSecret) { continue }
-
-        # Skip things that look like file paths with sensitive extensions
-        if ($tok -match '\.(pem|key|p12|pfx|env|secret)$') { continue }
-
-        # Keep short, benign-looking positional args (subcommands, filenames)
-        if ($tok.Length -le 40 -and $tok -notmatch '[=@]') {
-            $safeArgs += $tok
-        }
-
-        if ($safeArgs.Count -ge 2) { break }
     }
 
-    $parts = @($verb) + $safeArgs
+    $parts = if ($subcommand) { @($verb, $subcommand) } else { @($verb) }
     return "Running $($parts -join ' ')"
 }
 
@@ -208,22 +236,22 @@ function Send-OmniContext {
     $endpointUrl = $script:Config.EndpointUrl
     $json        = $Context | ConvertTo-Json -Compress -Depth 3
 
-    # Fire on a background thread so the prompt never blocks
-    $null = [System.Threading.ThreadPool]::QueueUserWorkItem({
-        param($state)
-        try {
-            $response = Invoke-RestMethod `
-                -Uri         $state.Url `
-                -Method      Post `
-                -Body        $state.Json `
-                -ContentType 'application/json; charset=utf-8' `
-                -TimeoutSec  3 `
-                -ErrorAction SilentlyContinue
-        }
-        catch {
-            # OmniPresence not running — ignore silently
-        }
-    }.GetNewClosure(), [PSCustomObject]@{ Url = $endpointUrl; Json = $json })
+    # Fire-and-forget via HttpClient.PostAsync. PostAsync returns immediately so
+    # the prompt never blocks; ContinueWith observes (and swallows) any failure
+    # so an unobserved task exception can never surface. If OmniPresence is not
+    # running the connection simply fails silently.
+    try {
+        $content = [System.Net.Http.StringContent]::new(
+            $json, [System.Text.Encoding]::UTF8, 'application/json')
+        $task = $script:HttpClient.PostAsync($endpointUrl, $content)
+        $null = $task.ContinueWith([Action[System.Threading.Tasks.Task[System.Net.Http.HttpResponseMessage]]]{
+            param($t)
+            if ($t.Exception) { $t.Exception | Out-Null }  # observe to avoid UnobservedTaskException
+        })
+    }
+    catch {
+        # Building/dispatching the request failed — ignore silently.
+    }
 }
 
 # ---------------------------------------------------------------------------
