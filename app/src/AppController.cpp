@@ -27,13 +27,31 @@ AppController::AppController(QObject* parent)
             this,                  &AppController::onIntegrationContextUpdated);
 
     connect(m_discordClient.get(), &DiscordPresenceClient::connectionStatusChanged,
-            this, [this](DiscordConnectionStatus) { emit discordStatusChanged(); });
+            this, [this](DiscordConnectionStatus status) {
+                // Clear the stale error once a fresh attempt gets underway or succeeds.
+                if (status == DiscordConnectionStatus::Connecting ||
+                    status == DiscordConnectionStatus::Connected) {
+                    m_discordError.clear();
+                }
+                emit discordStatusChanged();
+            });
+
+    connect(m_discordClient.get(), &DiscordPresenceClient::sdkError,
+            this, [this](const QString& message) {
+                m_discordError = message;
+                emit discordStatusChanged();
+            });
 
     // ── Discord SDK callback timer (100 ms) ───────────────────────────────────
     m_discordCallbackTimer = new QTimer(this);
     m_discordCallbackTimer->setInterval(100);
     connect(m_discordCallbackTimer, &QTimer::timeout,
             this,                   &AppController::onDiscordCallbackTimer);
+
+    // ── "Capture next window" countdown timer (1 s ticks) ─────────────────────
+    m_captureTimer = new QTimer(this);
+    m_captureTimer->setInterval(1000);
+    connect(m_captureTimer, &QTimer::timeout, this, &AppController::onCaptureTick);
 }
 
 AppController::~AppController() = default;
@@ -63,6 +81,20 @@ QString AppController::presenceDetails()     const { return m_currentPresence.de
 QString AppController::presenceState()       const { return m_currentPresence.state; }
 bool    AppController::isPrivateFallback()   const { return m_currentPresence.isPrivateFallback; }
 bool    AppController::discordConnected()    const { return m_discordClient->isConnected(); }
+
+QString AppController::discordStatus() const {
+    switch (m_discordClient->connectionStatus()) {
+    case DiscordConnectionStatus::Connected:   return QStringLiteral("Connected");
+    case DiscordConnectionStatus::Connecting:  return QStringLiteral("Connecting…");
+    case DiscordConnectionStatus::Error:       return QStringLiteral("Error");
+    case DiscordConnectionStatus::Disconnected:
+    default:                                    return QStringLiteral("Disconnected");
+    }
+}
+
+QString AppController::discordAppId() const {
+    return m_configStore->settings().discordAppId;
+}
 
 QString AppController::lastUpdateTime() const {
     return m_lastUpdateTime.isValid()
@@ -114,6 +146,54 @@ void AppController::evaluateAndPublish() {
 void AppController::captureCurrentWindow() {
     // Re-emit current window so the UI can populate a "create rule" form.
     emit windowChanged();
+}
+
+void AppController::beginCapture() {
+    // A direct snapshot would only ever capture OmniPresence itself (it is the
+    // focused window while you click the button). Instead, count down a few
+    // seconds so the user can alt-tab / click the window they actually want,
+    // then snapshot whatever is in the foreground at that moment.
+    if (m_capturing) return;
+    m_capturing = true;
+    m_captureCountdown = 4;
+    emit captureStateChanged();
+    m_captureTimer->start();
+}
+
+void AppController::onCaptureTick() {
+    --m_captureCountdown;
+    if (m_captureCountdown > 0) {
+        emit captureStateChanged();
+        return;
+    }
+
+    // Countdown finished — grab the foreground window now.
+    m_captureTimer->stop();
+    m_capturing = false;
+    emit captureStateChanged();
+
+    WindowInfo snapshot = m_watcher->currentForegroundWindow();
+    if (!snapshot.processName.isEmpty()) {
+        m_currentWindow = snapshot;
+        emit windowChanged();
+        evaluateAndPublish();
+    }
+}
+
+void AppController::connectDiscord() {
+    const QString appId = m_configStore->settings().discordAppId;
+    if (appId.isEmpty()) {
+        m_discordError = QStringLiteral(
+            "No Discord application ID configured. Set \"discordAppId\" in "
+            "%APPDATA%\\OmniPresence\\config.json, then reload config.");
+        emit discordStatusChanged();
+        return;
+    }
+    m_discordClient->connectToDiscord(appId);
+}
+
+void AppController::disconnectDiscord() {
+    m_discordClient->disconnectFromDiscord();
 }
 
 void AppController::publishTest() {

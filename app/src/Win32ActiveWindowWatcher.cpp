@@ -45,10 +45,21 @@ bool Win32ActiveWindowWatcher::isRunning() const {
 void Win32ActiveWindowWatcher::onPollTimer() {
     const WindowInfo candidate = queryForegroundWindow();
 
+    // Ignore our own window. Otherwise, every time the user alt-tabs back to
+    // OmniPresence the presence would flip to "OmniPresence", and a manual
+    // capture would be clobbered the moment focus returns to the app.
+    if (candidate.pid == static_cast<uint32_t>(::GetCurrentProcessId())) {
+        return;
+    }
+
     m_debouncer.feed(candidate, [this](const WindowInfo& committed, bool categoryChanged) {
         Q_UNUSED(categoryChanged)
         emit activeWindowChanged(committed);
     });
+}
+
+WindowInfo Win32ActiveWindowWatcher::currentForegroundWindow() const {
+    return queryForegroundWindow();
 }
 
 WindowInfo Win32ActiveWindowWatcher::queryForegroundWindow() const {

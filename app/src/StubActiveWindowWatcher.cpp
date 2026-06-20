@@ -53,6 +53,10 @@ bool StubActiveWindowWatcher::isRunning() const {
     return m_timer.isActive();
 }
 
+WindowInfo StubActiveWindowWatcher::currentForegroundWindow() const {
+    return m_lastEmitted;
+}
+
 void StubActiveWindowWatcher::emitNextStub() {
     const StubScenario& s = kScenarios[m_cycle % kNumScenarios];
     WindowInfo info;
@@ -62,6 +66,7 @@ void StubActiveWindowWatcher::emitNextStub() {
     info.windowClass    = QString::fromUtf8(s.windowClass);
     info.pid            = s.pid;
     ++m_cycle;
+    m_lastEmitted = info;
     emit activeWindowChanged(info);
 }
 

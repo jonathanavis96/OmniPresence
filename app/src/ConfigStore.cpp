@@ -4,6 +4,8 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
+#include <QJsonArray>
 #include <QStandardPaths>
 #include <QDebug>
 
@@ -11,26 +13,48 @@ namespace OmniPresence {
 
 // ── AppSettings JSON helpers ──────────────────────────────────────────────────
 
+// The on-disk schema is the documented/flat one (see config/omnipresence.example.json
+// and docs/DISCORD_SETUP.md): settings live at the JSON root, the Discord app ID
+// is "discordApplicationId", the port is "localContextPort", the stability window
+// is "focusStableMs", and rules are a top-level "rules" array. Earlier scaffolding
+// of this class invented a different nested schema; we read both for safety but
+// write the documented one.
+
 static QJsonObject settingsToJson(const AppSettings& s) {
     QJsonObject obj;
-    obj[QStringLiteral("discordAppId")]       = s.discordAppId;
-    obj[QStringLiteral("privacyMode")]        = s.privacyMode;
-    obj[QStringLiteral("startWithWindows")]   = s.startWithWindows;
-    obj[QStringLiteral("contextServerPort")]  = static_cast<int>(s.contextServerPort);
-    obj[QStringLiteral("pollIntervalMs")]     = s.pollIntervalMs;
-    obj[QStringLiteral("stabilityWindowMs")]  = s.stabilityWindowMs;
-    obj[QStringLiteral("showInTray")]         = s.showInTray;
+    obj[QStringLiteral("discordApplicationId")] = s.discordAppId;
+    obj[QStringLiteral("privacyMode")]          = s.privacyMode;
+    obj[QStringLiteral("startWithWindows")]     = s.startWithWindows;
+    obj[QStringLiteral("localContextPort")]     = static_cast<int>(s.contextServerPort);
+    obj[QStringLiteral("pollIntervalMs")]       = s.pollIntervalMs;
+    obj[QStringLiteral("focusStableMs")]        = s.stabilityWindowMs;
+    obj[QStringLiteral("showInTray")]           = s.showInTray;
     return obj;
+}
+
+// Read a string that may be stored as a JSON string or a (large) number.
+static QString readId(const QJsonObject& obj, const QString& a, const QString& b) {
+    QJsonValue v = obj.contains(a) ? obj.value(a) : obj.value(b);
+    if (v.isString()) return v.toString();
+    if (v.isDouble()) return QString::number(static_cast<qulonglong>(v.toDouble()));
+    return {};
 }
 
 static AppSettings settingsFromJson(const QJsonObject& obj) {
     AppSettings s;
-    s.discordAppId       = obj[QStringLiteral("discordAppId")].toString();
+    s.discordAppId       = readId(obj, QStringLiteral("discordApplicationId"),
+                                       QStringLiteral("discordAppId"));
     s.privacyMode        = obj[QStringLiteral("privacyMode")].toBool(false);
     s.startWithWindows   = obj[QStringLiteral("startWithWindows")].toBool(false);
-    s.contextServerPort  = static_cast<quint16>(obj[QStringLiteral("contextServerPort")].toInt(47831));
+    s.contextServerPort  = static_cast<quint16>(
+        obj.contains(QStringLiteral("localContextPort"))
+            ? obj[QStringLiteral("localContextPort")].toInt(47831)
+            : obj[QStringLiteral("contextServerPort")].toInt(47831));
     s.pollIntervalMs     = obj[QStringLiteral("pollIntervalMs")].toInt(750);
-    s.stabilityWindowMs  = obj[QStringLiteral("stabilityWindowMs")].toInt(2500);
+    s.stabilityWindowMs  =
+        obj.contains(QStringLiteral("focusStableMs"))
+            ? obj[QStringLiteral("focusStableMs")].toInt(2500)
+            : obj[QStringLiteral("stabilityWindowMs")].toInt(2500);
     s.showInTray         = obj[QStringLiteral("showInTray")].toBool(true);
     return s;
 }
@@ -110,15 +134,27 @@ bool ConfigStore::parseJson(const QByteArray& data) {
         return false;
     }
     const QJsonObject root = doc.object();
-    m_settings = settingsFromJson(root[QStringLiteral("settings")].toObject());
-    m_ruleSet  = RuleSet::fromJson(root[QStringLiteral("ruleSet")].toObject());
+    // Documented schema keeps settings at the root; the older form nested them
+    // under "settings". Pick whichever is present.
+    const QJsonObject settingsObj =
+        root.contains(QStringLiteral("settings"))
+            ? root[QStringLiteral("settings")].toObject()
+            : root;
+    m_settings = settingsFromJson(settingsObj);
+    // Rules: documented schema is a top-level "rules" array (which RuleSet reads
+    // off whatever object it's given); older form nested it under "ruleSet".
+    m_ruleSet  = root.contains(QStringLiteral("ruleSet"))
+            ? RuleSet::fromJson(root[QStringLiteral("ruleSet")].toObject())
+            : RuleSet::fromJson(root);
     return true;
 }
 
 QByteArray ConfigStore::serialiseJson() const {
-    QJsonObject root;
-    root[QStringLiteral("settings")] = settingsToJson(m_settings);
-    root[QStringLiteral("ruleSet")]  = m_ruleSet.toJson();
+    // Write the documented flat schema: settings at the root + a top-level
+    // "rules" array, so a saved file matches config/omnipresence.example.json
+    // and reloads cleanly.
+    QJsonObject root = settingsToJson(m_settings);
+    root[QStringLiteral("rules")] = m_ruleSet.toJson().value(QStringLiteral("rules"));
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 

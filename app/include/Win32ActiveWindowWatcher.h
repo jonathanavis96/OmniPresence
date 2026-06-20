@@ -21,6 +21,7 @@ public:
     void start()  override;
     void stop()   override;
     [[nodiscard]] bool isRunning() const override;
+    [[nodiscard]] WindowInfo currentForegroundWindow() const override;
 
 private slots:
     void onPollTimer();

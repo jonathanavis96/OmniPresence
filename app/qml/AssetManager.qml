@@ -15,17 +15,20 @@ Page {
 
     // Known status slots — extend as more activity types are added.
     // TODO: Wire to ConfigStore so keys persist across sessions.
+    // `thumb` points at a bundled local preview of the art you generated (under
+    // resources/assets/). Empty = no local preview yet (upload art to the portal
+    // and drop a matching <key>.png into resources/assets to light it up).
     ListModel {
         id: assetModel
-        ListElement { slotName: "osrs";       slotLabel: "Old School RuneScape";  imageKey: "osrs";       imageText: "Playing OSRS" }
-        ListElement { slotName: "code";       slotLabel: "VS Code / IDE";         imageKey: "vscode";     imageText: "Writing code" }
-        ListElement { slotName: "terminal";   slotLabel: "Terminal";              imageKey: "terminal";   imageText: "In the terminal" }
-        ListElement { slotName: "youtube";    slotLabel: "YouTube";               imageKey: "youtube";    imageText: "Watching YouTube" }
-        ListElement { slotName: "reddit";     slotLabel: "Reddit";                imageKey: "reddit";     imageText: "Browsing Reddit" }
-        ListElement { slotName: "pihole";     slotLabel: "Pi-hole Dashboard";     imageKey: "pihole";     imageText: "Managing Pi-hole" }
-        ListElement { slotName: "dashboard";  slotLabel: "Generic Dashboard";     imageKey: "dashboard";  imageText: "On a dashboard" }
-        ListElement { slotName: "discord";    slotLabel: "Discord";               imageKey: "discord";    imageText: "On Discord" }
-        ListElement { slotName: "fallback";   slotLabel: "Private / Fallback";    imageKey: "computer";   imageText: "Working privately" }
+        ListElement { slotName: "osrs";       slotLabel: "Old School RuneScape";  imageKey: "osrs";       imageText: "Playing OSRS";        thumb: "osrs" }
+        ListElement { slotName: "code";       slotLabel: "VS Code / IDE";         imageKey: "code";       imageText: "Writing code";        thumb: "code" }
+        ListElement { slotName: "terminal";   slotLabel: "Terminal";              imageKey: "terminal";   imageText: "In the terminal";     thumb: "" }
+        ListElement { slotName: "youtube";    slotLabel: "YouTube";               imageKey: "youtube";    imageText: "Watching YouTube";    thumb: "" }
+        ListElement { slotName: "reddit";     slotLabel: "Reddit";                imageKey: "reddit";     imageText: "Browsing Reddit";     thumb: "" }
+        ListElement { slotName: "pihole";     slotLabel: "Pi-hole Dashboard";     imageKey: "pihole";     imageText: "Managing Pi-hole";    thumb: "" }
+        ListElement { slotName: "dashboard";  slotLabel: "Generic Dashboard";     imageKey: "dashboard";  imageText: "On a dashboard";      thumb: "" }
+        ListElement { slotName: "discord";    slotLabel: "Discord";               imageKey: "discord";    imageText: "On Discord";          thumb: "" }
+        ListElement { slotName: "fallback";   slotLabel: "Private / Fallback";    imageKey: "computer";   imageText: "Working privately";   thumb: "" }
     }
 
     ColumnLayout {
@@ -62,6 +65,7 @@ Page {
             Layout.fillWidth: true
             spacing: 0
 
+            Text { text: "Art";         color: "#949ba4"; font.pixelSize: 11; font.capitalization: Font.AllUppercase; Layout.minimumWidth: 56;  font.letterSpacing: 1 }
             Text { text: "Slot";        color: "#949ba4"; font.pixelSize: 11; font.capitalization: Font.AllUppercase; Layout.minimumWidth: 160; font.letterSpacing: 1 }
             Text { text: "Image Key";   color: "#949ba4"; font.pixelSize: 11; font.capitalization: Font.AllUppercase; Layout.fillWidth: true;   font.letterSpacing: 1 }
             Text { text: "Hover Text";  color: "#949ba4"; font.pixelSize: 11; font.capitalization: Font.AllUppercase; Layout.fillWidth: true;   font.letterSpacing: 1 }
@@ -80,6 +84,40 @@ Page {
             delegate: RowLayout {
                 width: ListView.view.width
                 spacing: 0
+
+                // Art thumbnail (bundled local preview) or placeholder
+                Rectangle {
+                    Layout.minimumWidth: 56
+                    implicitHeight: 48
+                    color: "transparent"
+
+                    Rectangle {
+                        width: 40; height: 40
+                        anchors.verticalCenter: parent.verticalCenter
+                        radius: 6
+                        color: "#1e1f22"
+                        clip: true
+
+                        Image {
+                            id: thumbImg
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            fillMode: Image.PreserveAspectCrop
+                            source: model.thumb
+                                    ? "qrc:/OmniPresence/resources/assets/" + model.thumb + ".png"
+                                    : ""
+                            visible: model.thumb !== "" && status === Image.Ready
+                        }
+                        // Placeholder when no local art preview exists.
+                        Text {
+                            anchors.centerIn: parent
+                            visible: !thumbImg.visible
+                            text: "—"
+                            color: "#4f5660"
+                            font.pixelSize: 16
+                        }
+                    }
+                }
 
                 // Slot label
                 Text {

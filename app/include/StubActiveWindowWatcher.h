@@ -16,13 +16,15 @@ public:
     void start()  override;
     void stop()   override;
     [[nodiscard]] bool isRunning() const override;
+    [[nodiscard]] WindowInfo currentForegroundWindow() const override;
 
 private slots:
     void emitNextStub();
 
 private:
-    QTimer  m_timer;
-    int     m_cycle{0};   ///< Rotates through synthetic scenarios.
+    QTimer     m_timer;
+    int        m_cycle{0};       ///< Rotates through synthetic scenarios.
+    WindowInfo m_lastEmitted;    ///< Last synthetic window, for on-demand capture.
 };
 
 } // namespace OmniPresence

@@ -89,6 +89,8 @@ qt_add_qml_module(omnipresence
         qml/AssetManager.qml
     RESOURCES
         resources/README.md
+        resources/assets/code.png
+        resources/assets/osrs.png
 )
 
 # ── Link libraries ────────────────────────────────────────────────────────────

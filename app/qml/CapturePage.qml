@@ -20,7 +20,8 @@ Page {
         }
 
         Text {
-            text: "Snapshot the currently focused window and use it as a starting point for a rule."
+            text: "Click capture, then switch to the window you want within the countdown. "
+                + "OmniPresence grabs whatever you focus — not itself."
             color: "#949ba4"
             font.pixelSize: 13
             wrapMode: Text.WordWrap
@@ -28,16 +29,16 @@ Page {
         }
 
         Button {
-            text: "📸  Capture Current Window"
-            onClicked: {
-                AppController.captureCurrentWindow()
-                captured = true
-            }
-            property bool captured: false
+            enabled: !AppController.capturing
+            text: AppController.capturing
+                  ? ("⏳  Switch to your window… " + AppController.captureCountdown)
+                  : "📸  Capture Next Window"
+            onClicked: AppController.beginCapture()
 
             background: Rectangle {
                 radius: 6
-                color: parent.hovered ? "#4752c4" : "#5865f2"
+                color: !parent.enabled ? "#4f5660"
+                       : parent.hovered ? "#4752c4" : "#5865f2"
             }
             contentItem: Text {
                 text: parent.text
@@ -46,7 +47,7 @@ Page {
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment:   Text.AlignVCenter
             }
-            implicitWidth: 220
+            implicitWidth: 240
             implicitHeight: 40
         }
 

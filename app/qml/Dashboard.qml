@@ -58,6 +58,93 @@ Page {
                 }
             }
 
+            // ── Discord connection card ───────────────────────────────────────
+            SectionCard {
+                Layout.fillWidth: true
+                title: "Discord Connection"
+
+                ColumnLayout {
+                    spacing: 8
+                    Layout.fillWidth: true
+
+                    LabeledRow {
+                        label: "Status"
+                        value: AppController.discordStatus
+                               + (AppController.discordAppId
+                                  ? "   (app " + AppController.discordAppId + ")"
+                                  : "   (no app ID configured)")
+                    }
+
+                    // Error line — only shown when something went wrong.
+                    Text {
+                        visible: AppController.discordError !== ""
+                        text: "⚠ " + AppController.discordError
+                        color: "#faa81a"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        visible: !AppController.discordConnected
+                        text: "First run opens your browser once to authorise. After that it reconnects silently."
+                        color: "#949ba4"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    RowLayout {
+                        spacing: 8
+
+                        Button {
+                            text: AppController.discordConnected ? "Reconnect"
+                                  : (AppController.discordStatus === "Connecting…"
+                                     ? "Connecting…" : "Connect to Discord")
+                            enabled: AppController.discordStatus !== "Connecting…"
+                            onClicked: AppController.connectDiscord()
+
+                            background: Rectangle {
+                                radius: 6
+                                color: !parent.enabled ? "#4f5660"
+                                       : parent.hovered ? "#4752c4" : "#5865f2"
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: "white"
+                                font.pixelSize: 13
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment:   Text.AlignVCenter
+                            }
+                            implicitWidth: 180
+                            implicitHeight: 36
+                        }
+
+                        Button {
+                            visible: AppController.discordConnected
+                            text: "Disconnect"
+                            onClicked: AppController.disconnectDiscord()
+
+                            background: Rectangle {
+                                radius: 6
+                                color: parent.hovered ? "#3a3c41" : "#2b2d31"
+                                border.color: "#4f5660"
+                                border.width: 1
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#dbdee1"
+                                font.pixelSize: 13
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment:   Text.AlignVCenter
+                            }
+                            implicitWidth: 120
+                            implicitHeight: 36
+                        }
+                    }
+                }
+            }
+
             // ── Presence preview card ─────────────────────────────────────────
             SectionCard {
                 Layout.fillWidth: true

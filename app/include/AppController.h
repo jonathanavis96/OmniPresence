@@ -40,9 +40,15 @@ class AppController : public QObject {
     Q_PROPERTY(bool     isPrivateFallback   READ isPrivateFallback   NOTIFY presenceChanged)
 
     Q_PROPERTY(bool     discordConnected    READ discordConnected    NOTIFY discordStatusChanged)
+    Q_PROPERTY(QString  discordStatus       READ discordStatus       NOTIFY discordStatusChanged)
+    Q_PROPERTY(QString  discordError        READ discordError        NOTIFY discordStatusChanged)
+    Q_PROPERTY(QString  discordAppId        READ discordAppId        NOTIFY discordStatusChanged)
     Q_PROPERTY(QString  lastUpdateTime      READ lastUpdateTime      NOTIFY presenceChanged)
     Q_PROPERTY(bool     privacyMode         READ privacyMode         WRITE setPrivacyMode NOTIFY privacyModeChanged)
     Q_PROPERTY(bool     paused              READ paused              NOTIFY pauseChanged)
+
+    Q_PROPERTY(bool     capturing           READ capturing           NOTIFY captureStateChanged)
+    Q_PROPERTY(int      captureCountdown    READ captureCountdown     NOTIFY captureStateChanged)
 
 public:
     explicit AppController(QObject* parent = nullptr);
@@ -61,12 +67,23 @@ public:
     QString  presenceState()      const;
     bool     isPrivateFallback()  const;
     bool     discordConnected()   const;
+    QString  discordStatus()      const;
+    QString  discordError()       const { return m_discordError; }
+    QString  discordAppId()       const;
     QString  lastUpdateTime()     const;
     bool     privacyMode()        const noexcept { return m_overrideState.privateMode; }
     bool     paused()             const noexcept { return m_overrideState.paused;      }
+    bool     capturing()          const noexcept { return m_capturing;        }
+    int      captureCountdown()   const noexcept { return m_captureCountdown; }
 
     // ── QML-invokable actions ─────────────────────────────────────────────────
     Q_INVOKABLE void captureCurrentWindow();
+    /// Start a short countdown, then snapshot whichever window the user focused.
+    Q_INVOKABLE void beginCapture();
+    /// (Re)start the Discord OAuth handshake using the configured app ID.
+    Q_INVOKABLE void connectDiscord();
+    /// Drop the Discord connection (does not clear the saved token).
+    Q_INVOKABLE void disconnectDiscord();
     Q_INVOKABLE void publishTest();
     Q_INVOKABLE void setPrivacyMode(bool enabled);
     Q_INVOKABLE void pause();
@@ -84,11 +101,13 @@ signals:
     void discordStatusChanged();
     void privacyModeChanged();
     void pauseChanged();
+    void captureStateChanged();
 
 private slots:
     void onActiveWindowChanged(const OmniPresence::WindowInfo& info);
     void onIntegrationContextUpdated(const QString& source);
     void onDiscordCallbackTimer();
+    void onCaptureTick();
 
 private:
     void evaluateAndPublish();
@@ -106,8 +125,12 @@ private:
     PresencePayload m_currentPresence;
     PresencePayload m_lastPublishedPresence;
     QDateTime       m_lastUpdateTime;
+    QString         m_discordError;
 
     class QTimer*   m_discordCallbackTimer{nullptr};
+    class QTimer*   m_captureTimer{nullptr};
+    bool            m_capturing{false};
+    int             m_captureCountdown{0};
 };
 
 } // namespace OmniPresence

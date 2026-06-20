@@ -24,6 +24,11 @@ public:
     /// Whether the watcher is currently running.
     [[nodiscard]] virtual bool isRunning() const = 0;
 
+    /// Read the foreground window right now, bypassing the debounce window.
+    /// Used by the "Capture next window" countdown so the snapshot reflects
+    /// whatever the user focused, without waiting for the stability period.
+    [[nodiscard]] virtual WindowInfo currentForegroundWindow() const = 0;
+
 signals:
     /// Emitted after the debounce window has elapsed and the focused window
     /// has been stable for at least the required stability period.
