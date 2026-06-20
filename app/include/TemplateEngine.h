@@ -18,7 +18,7 @@
 
 namespace OmniPresence {
 
-class WindowInfo;
+struct WindowInfo;  // defined as a struct in WindowInfo.h
 class IntegrationContext;
 
 using TemplateContext = QMap<QString, QString>;

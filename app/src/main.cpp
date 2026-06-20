@@ -10,6 +10,8 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QIcon>
+#include <QStyle>     // QStyle::SP_ComputerIcon (standard fallback icon)
+#include <QWindow>    // qobject_cast<QWindow*> on the QML root + show/raise/activate
 #include <QDebug>
 
 int main(int argc, char* argv[]) {

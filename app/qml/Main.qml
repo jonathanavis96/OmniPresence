@@ -3,6 +3,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import OmniPresence
 
 ApplicationWindow {
     id: root
@@ -59,12 +60,12 @@ ApplicationWindow {
 
                 Repeater {
                     model: [
-                        { label: "Dashboard",    page: "Dashboard.qml"    },
-                        { label: "Capture",      page: "CapturePage.qml"  },
-                        { label: "Rules",        page: "RulesPage.qml"    },
-                        { label: "Preview",      page: "PreviewPage.qml"  },
-                        { label: "Privacy",      page: "PrivacyPage.qml"  },
-                        { label: "Assets",       page: "AssetManager.qml" },
+                        { label: "Dashboard",    page: "Dashboard.qml",    comp: pgDashboard },
+                        { label: "Capture",      page: "CapturePage.qml",  comp: pgCapture   },
+                        { label: "Rules",        page: "RulesPage.qml",    comp: pgRules     },
+                        { label: "Preview",      page: "PreviewPage.qml",  comp: pgPreview   },
+                        { label: "Privacy",      page: "PrivacyPage.qml",  comp: pgPrivacy   },
+                        { label: "Assets",       page: "AssetManager.qml", comp: pgAssets    },
                     ]
 
                     delegate: Rectangle {
@@ -87,7 +88,7 @@ ApplicationWindow {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: stackView.replace(null, Qt.resolvedUrl(modelData.page))
+                            onClicked: stackView.replace(null, modelData.comp)
                         }
                     }
                 }
@@ -125,12 +126,24 @@ ApplicationWindow {
             id: stackView
             Layout.fillWidth: true
             Layout.fillHeight: true
-            initialItem: Qt.resolvedUrl("Dashboard.qml")
+            initialItem: pgDashboard
 
             pushEnter:  Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 120 } }
             pushExit:   Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 80  } }
             replaceEnter: pushEnter
             replaceExit:  pushExit
+
+            Component.onCompleted: console.log("[OP] StackView initial currentItem =", currentItem)
         }
     }
+
+    // Page components — referenced as sibling types from the OmniPresence module.
+    // (Loading sibling pages by qrc URL did not instantiate them; type-based
+    //  Components are the canonical qt_add_qml_module approach.)
+    Component { id: pgDashboard; Dashboard {} }
+    Component { id: pgCapture;   CapturePage {} }
+    Component { id: pgRules;     RulesPage {} }
+    Component { id: pgPreview;   PreviewPage {} }
+    Component { id: pgPrivacy;   PrivacyPage {} }
+    Component { id: pgAssets;    AssetManager {} }
 }

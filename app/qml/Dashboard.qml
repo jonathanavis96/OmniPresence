@@ -9,11 +9,16 @@ Page {
     background: Rectangle { color: "#313338" }
 
     ScrollView {
+        id: sv
         anchors.fill: parent
         contentWidth: availableWidth
 
         ColumnLayout {
-            anchors { top: parent.top; left: parent.left; right: parent.right; margins: 24 }
+            // Bind width to the ScrollView's availableWidth. Anchoring to `parent`
+            // here targets the Flickable contentItem (width 0) and collapses the
+            // layout to zero width — nothing renders, with no QML error.
+            x: 24; y: 24
+            width: sv.availableWidth - 48
             spacing: 16
 
             // ── Section header ────────────────────────────────────────────────
@@ -115,6 +120,7 @@ Page {
 
     // ── Inline components ─────────────────────────────────────────────────────
     component SectionCard: Rectangle {
+        id: card
         property string title: ""
         default property alias cardContent: cardColumn.children
         radius: 8
@@ -127,7 +133,7 @@ Page {
             spacing: 10
 
             Text {
-                text: root.title  // 'root' here is the SectionCard instance in this context
+                text: card.title  // the SectionCard instance, not the Page root
                 color: "#949ba4"
                 font.pixelSize: 11
                 font.capitalization: Font.AllUppercase

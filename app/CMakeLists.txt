@@ -26,9 +26,31 @@ set(OMNIPRESENCE_SOURCES
     src/AppController.cpp
 )
 
+# Headers MUST be listed as target sources so AUTOMOC scans the Q_OBJECT classes
+# and generates the moc_*.cpp (otherwise: unresolved staticMetaObject / signal
+# symbols at link time for classes whose headers live in a separate include dir).
+set(OMNIPRESENCE_HEADERS
+    include/WindowInfo.h
+    include/ActiveWindowWatcher.h
+    include/StubActiveWindowWatcher.h
+    include/PresencePayload.h
+    include/FocusDebouncer.h
+    include/Rule.h
+    include/IntegrationContext.h
+    include/TemplateEngine.h
+    include/RuleEngine.h
+    include/DiscordPresenceClient.h
+    include/LocalContextServer.h
+    include/ConfigStore.h
+    include/AppController.h
+)
+list(APPEND OMNIPRESENCE_SOURCES ${OMNIPRESENCE_HEADERS})
+
 # Win32-only active window watcher — compiled only on Windows
 if(WIN32)
-    list(APPEND OMNIPRESENCE_SOURCES src/Win32ActiveWindowWatcher.cpp)
+    list(APPEND OMNIPRESENCE_SOURCES
+        src/Win32ActiveWindowWatcher.cpp
+        include/Win32ActiveWindowWatcher.h)
 endif()
 
 # ── Executable ────────────────────────────────────────────────────────────────
@@ -40,6 +62,13 @@ qt_add_executable(omnipresence
 set_target_properties(omnipresence PROPERTIES
     WIN32_EXECUTABLE ON
 )
+
+# Win32ActiveWindowWatcher's Q_OBJECT class is guarded by #ifdef _WIN32. moc does
+# not define _WIN32 itself, so without this it skips the class and the meta-object
+# symbols go unresolved at link. Define it for moc on Windows builds.
+if(WIN32)
+    set_target_properties(omnipresence PROPERTIES AUTOMOC_MOC_OPTIONS "-D_WIN32")
+endif()
 
 # ── Include directories ───────────────────────────────────────────────────────
 target_include_directories(omnipresence PRIVATE

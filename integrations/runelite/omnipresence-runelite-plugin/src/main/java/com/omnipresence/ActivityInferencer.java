@@ -288,21 +288,23 @@ public class ActivityInferencer {
      * Falls back to a "Region <id>" placeholder for unmapped regions.
      */
     public static String locationFromRegion(int regionId) {
-        return switch (regionId) {
-            case REGION_GE                    -> "Grand Exchange";
-            case REGION_LUMBRIDGE             -> "Lumbridge";
-            case REGION_EDGEVILLE             -> "Edgeville";
-            case REGION_VARROCK_WEST          -> "Varrock";
-            case REGION_ASGARNIAN_ICE_DUNGEON -> "Asgarnian Ice Dungeon";
-            case REGION_SLAYER_TOWER          -> "Slayer Tower";
-            case REGION_CATACOMBS             -> "Catacombs of Kourend";
-            case REGION_GWD                   -> "God Wars Dungeon";
-            case REGION_CORP                  -> "Corporeal Beast";
-            case REGION_TOB                   -> "Theatre of Blood";
-            case REGION_COX                   -> "Chambers of Xeric";
-            case REGION_NIGHTMARE             -> "Nightmare of Ashihama";
-            default                           -> regionId > 0 ? "Region " + regionId : null;
-        };
+        // Classic switch (Java 11) — RuneLite plugins target Java 11, which does
+        // not support switch expressions (`case X ->`).
+        switch (regionId) {
+            case REGION_GE:                    return "Grand Exchange";
+            case REGION_LUMBRIDGE:             return "Lumbridge";
+            case REGION_EDGEVILLE:             return "Edgeville";
+            case REGION_VARROCK_WEST:          return "Varrock";
+            case REGION_ASGARNIAN_ICE_DUNGEON: return "Asgarnian Ice Dungeon";
+            case REGION_SLAYER_TOWER:          return "Slayer Tower";
+            case REGION_CATACOMBS:             return "Catacombs of Kourend";
+            case REGION_GWD:                   return "God Wars Dungeon";
+            case REGION_CORP:                  return "Corporeal Beast";
+            case REGION_TOB:                   return "Theatre of Blood";
+            case REGION_COX:                   return "Chambers of Xeric";
+            case REGION_NIGHTMARE:             return "Nightmare of Ashihama";
+            default:                           return regionId > 0 ? "Region " + regionId : null;
+        }
     }
 
     /**
@@ -311,12 +313,12 @@ public class ActivityInferencer {
     private static String combatSkillFromXpOrAnimation(int xpSkillIndex, int animation) {
         // XP skill is more reliable when available
         if (xpSkillIndex >= 0) {
-            return switch (xpSkillIndex) {
-                case 4  -> "Ranged";
-                case 6  -> "Magic";
-                case 18 -> "Slayer";
-                default -> "Melee";
-            };
+            switch (xpSkillIndex) {
+                case 4:  return "Ranged";
+                case 6:  return "Magic";
+                case 18: return "Slayer";
+                default: return "Melee";
+            }
         }
         return combatSkillFromAnimation(animation);
     }

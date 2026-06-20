@@ -19,7 +19,6 @@ import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
-import net.runelite.api.events.VarPlayerChanged;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -173,11 +172,6 @@ public class OmniPresencePlugin extends Plugin {
         if (event.getVarbitId() == VARBIT_BANK_OPEN) {
             bankOpen = event.getValue() == 1;
         }
-    }
-
-    @Subscribe
-    public void onVarPlayerChanged(VarPlayerChanged event) {
-        // Reserved for future varplayer-based inference (e.g. quest state).
     }
 
     @Subscribe

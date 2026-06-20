@@ -9,11 +9,15 @@ Page {
     background: Rectangle { color: "#313338" }
 
     ScrollView {
+        id: sv
         anchors.fill: parent
         contentWidth: availableWidth
 
         ColumnLayout {
-            anchors { top: parent.top; left: parent.left; right: parent.right; margins: 24 }
+            // width bound to availableWidth; anchoring to the ScrollView's
+            // Flickable contentItem (width 0) would collapse the layout.
+            x: 24; y: 24
+            width: sv.availableWidth - 48
             spacing: 20
 
             Text {
