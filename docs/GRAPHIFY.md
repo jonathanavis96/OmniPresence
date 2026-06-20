@@ -18,9 +18,11 @@ graphify-out/
 └─ memory/             # saved Q&A feedback (gitignored)
 ```
 
-`graph.json` and `report.md` are committed so any future agent can query
-immediately without rebuilding. The large `graph.html` and `memory/` churn are
-gitignored (see `.gitignore`).
+`graphify-out/` is **not committed** — it is gitignored globally (regenerable,
+and it churns on every commit). The repo's git hooks rebuild it automatically:
+`post-commit` refreshes after code changes and `post-checkout` rebuilds on branch
+switch. **On a fresh clone, run `scripts/graphify-build` once** to generate the
+graph before querying (or just make a commit / checkout to trigger the hook).
 
 ## How to query (do this FIRST)
 

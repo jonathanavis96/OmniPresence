@@ -54,6 +54,7 @@ Thumbs.db
 *.swp
 
 # --- Graphify ---
-# graph outputs ARE committed (see docs/GRAPHIFY.md) except the large viz + memory churn
-graphify-out/memory/
-graphify-out/*.html
+# graph outputs are NOT committed (regenerable; rebuilt by git hooks / scripts/graphify-build).
+# See docs/GRAPHIFY.md. Also covered by the global ~/.config/git/ignore, repeated here
+# so the repo behaves the same on machines without that global config.
+graphify-out/

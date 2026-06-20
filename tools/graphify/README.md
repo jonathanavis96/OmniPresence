@@ -9,7 +9,9 @@ integration notes and serves as the fallback if the `graphify` CLI is missing.
 Graphify **is** wired up. The graph build was run during project scaffolding:
 
 - Build CLI: `graphify` (semantic backend: Gemini via `GEMINI_API_KEY`)
-- Graph output: `graphify-out/graph.json` (+ `report.md`), committed.
+- Graph output: `graphify-out/graph.json` (+ `GRAPH_REPORT.md`) — **gitignored**
+  (regenerable; rebuilt by the repo's git hooks). Run `scripts/graphify-build`
+  once on a fresh clone.
 - Wrapper scripts: `scripts/graphify-build`, `scripts/graphify-query`,
   `scripts/graphify-refresh`.
 
