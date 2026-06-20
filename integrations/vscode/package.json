@@ -1,0 +1,53 @@
+{
+  "name": "omnipresence-vscode",
+  "displayName": "OmniPresence VS Code Bridge",
+  "description": "Reports workspace/repo/branch and broad activity to OmniPresence for Discord Rich Presence. Exact file names are private by default.",
+  "version": "1.0.0",
+  "publisher": "omnipresence",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["discord", "rich presence", "omnipresence", "status"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "OmniPresence",
+      "properties": {
+        "omnipresence.endpoint": {
+          "type": "string",
+          "default": "http://127.0.0.1:47831/integrations/vscode/context",
+          "description": "URL of the local OmniPresence context endpoint. Only change this if you have a custom OmniPresence setup."
+        },
+        "omnipresence.allowFileTitles": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, the exact file name of the active editor is included in the reported payload. Disabled by default to keep file names private."
+        },
+        "omnipresence.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable OmniPresence reporting from VS Code."
+        },
+        "omnipresence.debounceMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 500,
+          "maximum": 10000,
+          "description": "Delay in milliseconds before a context update is sent after an event fires."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}

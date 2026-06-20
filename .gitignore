@@ -1,0 +1,59 @@
+# --- Build output ---
+build/
+build-*/
+out/
+cmake-build-*/
+*.user
+
+# --- Qt ---
+*.qmlc
+*.jsc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# --- C/C++ ---
+*.o
+*.obj
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.lib
+*.exp
+
+# --- Java / RuneLite plugin ---
+integrations/runelite/**/.gradle/
+integrations/runelite/**/build/
+*.class
+
+# --- Node / browser extension / vscode ---
+node_modules/
+*.vsix
+integrations/vscode/**/out/
+integrations/browser-extension/**/dist/
+
+# --- Discord Social SDK (vendored binaries are large; fetch via setup script) ---
+third_party/discord_social_sdk/
+
+# --- Local private config (NEVER commit real rules/URLs) ---
+config/omnipresence.json
+config/*.local.json
+*.local.json
+
+# --- Secrets / env ---
+.env
+.env.*
+*.secret
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Graphify ---
+# graph outputs ARE committed (see docs/GRAPHIFY.md) except the large viz + memory churn
+graphify-out/memory/
+graphify-out/*.html

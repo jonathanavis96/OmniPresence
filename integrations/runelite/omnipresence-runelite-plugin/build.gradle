@@ -1,0 +1,63 @@
+// build.gradle — OmniPresence RuneLite external plugin
+// Mirrors the structure of https://github.com/runelite/example-plugin
+
+plugins {
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+group = 'com.omnipresence'
+version = '1.0.0'
+
+repositories {
+    mavenLocal()
+    maven {
+        url = 'https://repo.runelite.net'
+    }
+    mavenCentral()
+}
+
+def runeLiteVersion = '1.10.47'
+
+dependencies {
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+
+    compileOnly 'org.projectlombok:lombok:1.18.32'
+    annotationProcessor 'org.projectlombok:lombok:1.18.32'
+
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+    // OkHttp is bundled with the RuneLite client; declare as compileOnly so we
+    // don't shadow-jar it in.
+    compileOnly 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.11.0'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+shadowJar {
+    archiveClassifier.set('')
+    // Only include classes we actually own; RuneLite runtime provides the rest.
+    configurations = [project.configurations.runtimeClasspath]
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+    options.compilerArgs << '-Xlint:unchecked'
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'omnipresence-runelite-plugin',
+            'Implementation-Version': version,
+        )
+    }
+}
+
+// Convenience alias so `./gradlew build` also produces the fat jar.
+build.dependsOn shadowJar

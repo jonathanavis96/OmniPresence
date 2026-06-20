@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# graphify-refresh — fast, FREE structural refresh after code changes.
+# Re-extracts code files via AST only (no LLM). Use this after edits so the
+# graph stays accurate; run scripts/graphify-build for a full semantic rebuild
+# (new community names, INFERRED edges) less often.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v graphify >/dev/null 2>&1; then
+  echo "graphify CLI not found on PATH. See tools/graphify/README.md." >&2
+  exit 127
+fi
+
+echo "[graphify-refresh] AST re-extract (free, no LLM)..."
+graphify update . --force
+echo "[graphify-refresh] done."

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# graphify-query — Graphify-first navigation for OmniPresence.
+# Query the knowledge graph instead of broadly reading/grepping the repo.
+#
+# Usage:
+#   scripts/graphify-query "where is the rule priority evaluated?"
+#   scripts/graphify-query --explain RuleEngine
+#   scripts/graphify-query --path "LocalContextServer" "DiscordPresenceClient"
+#   scripts/graphify-query --affected "PresencePayload"
+#   scripts/graphify-query "question" --budget 1500
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v graphify >/dev/null 2>&1; then
+  echo "graphify CLI not found on PATH. See tools/graphify/README.md." >&2
+  exit 127
+fi
+if [[ ! -f graphify-out/graph.json ]]; then
+  echo "No graphify-out/graph.json yet. Run scripts/graphify-build first." >&2
+  exit 1
+fi
+
+case "${1:-}" in
+  --explain)  shift; exec graphify explain "$@" ;;
+  --path)     shift; exec graphify path "$@" ;;
+  --affected) shift; exec graphify affected "$@" ;;
+  "" )        echo "usage: graphify-query \"<question>\" | --explain X | --path A B | --affected X" >&2; exit 2 ;;
+  *)          exec graphify query "$@" ;;
+esac
