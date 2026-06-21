@@ -149,6 +149,29 @@ public class ActivityInferencer {
     );
 
     // ---------------------------------------------------------------------------
+    // Combat skills — XP in these is a byproduct of fighting, not a standalone
+    // "training" activity. A bare XP drop in one of these (no animation, no NPC)
+    // is almost always combat residue between hits, so it must NOT produce a
+    // "Training Prayer"/"Training Hitpoints"/"Training Attack" fallback. Real
+    // altar prayer is caught earlier by PRAYER_ANIMATIONS ("Using Altar").
+    // (Attack 0, Defence 1, Strength 2, Hitpoints 3, Ranged 4, Prayer 5,
+    //  Magic 6, Slayer 18.)
+    // ---------------------------------------------------------------------------
+
+    private static final Set<Integer> COMBAT_SKILL_INDICES =
+        Set.of(0, 1, 2, 3, 4, 5, 6, 18);
+
+    /** How many subsequent polls a finished combat reading bridges before
+     *  releasing to Idle. One poll (~2s) covers the brief gap between kills where
+     *  the interaction target decays to null and a combat-skill XP drop lands. */
+    private static final int STICKY_POLLS = 1;
+
+    // Combat-stickiness state (the only mutable state; isolated to the public
+    // infer() wrapper, leaving infer0() pure for unit testing).
+    private InferenceResult stickyCombat = null;
+    private int stickyTtl = 0;
+
+    // ---------------------------------------------------------------------------
     // Public result type
     // ---------------------------------------------------------------------------
 
@@ -159,6 +182,15 @@ public class ActivityInferencer {
         String skill;
         String location;
         double confidence;
+    }
+
+    /** Human-readable skill name for a skill index, or "(none)" for -1 / unknown.
+     *  Used to render the diagnostic signal trail. */
+    public static String skillName(int skillIndex) {
+        if (skillIndex < 0) {
+            return "(none)";
+        }
+        return SKILL_NAMES.getOrDefault(skillIndex, "Unknown");
     }
 
     // ---------------------------------------------------------------------------
@@ -178,6 +210,52 @@ public class ActivityInferencer {
      * @param isLoggedIn          True when the player is in-game.
      */
     public InferenceResult infer(
+        String interactingNpcName,
+        int currentAnimation,
+        int recentXpSkillIndex,
+        int regionId,
+        boolean isInBank,
+        boolean isLoggedIn
+    ) {
+        InferenceResult result = infer0(
+            interactingNpcName, currentAnimation, recentXpSkillIndex,
+            regionId, isInBank, isLoggedIn);
+        return applyStickiness(result);
+    }
+
+    /**
+     * Bridge a finished combat reading across a brief ambiguous gap.
+     *
+     * Combat sets "Slaying …"/"Fighting …"; the interaction target then decays to
+     * null for a poll or two between kills, during which a stray combat-skill XP
+     * drop (Prayer/Hitpoints) would otherwise read as "Idle". For up to
+     * {@link #STICKY_POLLS} polls we hold the last combat reading instead, then
+     * release. Any other definite activity (banking, GE, skilling, real training)
+     * clears the sticky state immediately.
+     */
+    private InferenceResult applyStickiness(InferenceResult result) {
+        final String activity = result.getActivity();
+        if (activity.startsWith("Slaying ") || activity.startsWith("Fighting ")) {
+            stickyCombat = result;
+            stickyTtl = STICKY_POLLS;
+            return result;
+        }
+        if ("Idle".equals(activity)) {
+            if (stickyTtl > 0 && stickyCombat != null) {
+                stickyTtl--;
+                return stickyCombat;
+            }
+            stickyCombat = null;
+            return result;
+        }
+        // Definite non-combat activity → drop any lingering combat memory.
+        stickyCombat = null;
+        stickyTtl = 0;
+        return result;
+    }
+
+    /** Pure inference from observed signals (no cross-call state). */
+    private InferenceResult infer0(
         String interactingNpcName,
         int currentAnimation,
         int recentXpSkillIndex,
@@ -265,8 +343,12 @@ public class ActivityInferencer {
             return new InferenceResult("Using Altar", null, "Prayer", locationFromRegion(regionId), 0.75);
         }
 
-        // 6. Recent XP but no animation match — use skill index as a fallback
-        if (recentXpSkillIndex >= 0) {
+        // 6. Recent XP but no animation match — use skill index as a fallback.
+        //    Combat skills are excluded: a bare combat-skill XP drop with no NPC
+        //    and no animation is fight residue between hits (the cause of the old
+        //    "Training Prayer" misfire mid-Slayer), not a training session. Those
+        //    fall through to combat-stickiness / Idle instead.
+        if (recentXpSkillIndex >= 0 && !COMBAT_SKILL_INDICES.contains(recentXpSkillIndex)) {
             String skillName = SKILL_NAMES.getOrDefault(recentXpSkillIndex, "Unknown");
             return new InferenceResult(
                 "Training " + skillName,

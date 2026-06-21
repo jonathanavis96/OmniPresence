@@ -51,4 +51,12 @@ public class RuneLiteContext {
 
     /** ISO-8601 UTC timestamp when this context was captured. */
     private final String timestamp;
+
+    /**
+     * Compact, human-readable trail of the raw signals that drove this inference
+     * (interacting NPC, the skill whose XP last fired, region, animation, bank).
+     * Surfaced verbatim in OmniPresence's presence-events.log so a wrong reading
+     * shows exactly why. Diagnostics only — never used for matching.
+     */
+    private final String signals;
 }

@@ -101,6 +101,14 @@ public class OmniPresencePlugin extends Plugin {
     /** Track last published context to avoid redundant POSTs. */
     private volatile String lastPublishedActivity = null;
 
+    /** Wall-clock of the last POST. Used for the freshness heartbeat: OmniPresence
+     *  treats integration data as stale after ~120s, so even when the activity is
+     *  unchanged we must re-POST periodically — otherwise an idle/repetitive
+     *  session stops POSTing, the context expires, and OmniPresence falls back to
+     *  the raw window ("Java" for the dev client). Must be < that 120s window. */
+    private volatile long lastPublishMs = 0L;
+    private static final long HEARTBEAT_MS = 45_000L;
+
     @Override
     protected void startUp() {
         // Derive from the client's injected Gson (Plugin Hub forbids fresh Gson instances).
@@ -252,6 +260,14 @@ public class OmniPresencePlugin extends Plugin {
             return;
         }
 
+        // Snapshot the raw signals BEFORE inference decays them, so the diagnostic
+        // trail in presence-events.log reflects exactly what infer() saw this cycle.
+        final String signals = String.format(
+            "npc:%s xp:%s region:%d anim:%d bank:%b",
+            interactingNpcName != null ? interactingNpcName : "(none)",
+            ActivityInferencer.skillName(recentXpSkillIndex),
+            currentRegionId, currentAnimation, bankOpen);
+
         ActivityInferencer.InferenceResult result = inferencer.infer(
             interactingNpcName,
             currentAnimation,
@@ -267,12 +283,17 @@ public class OmniPresencePlugin extends Plugin {
         // the next poll.
         recentXpSkillIndex = -1;
 
-        // Debounce: skip if the derived activity hasn't meaningfully changed.
-        if (result.getActivity().equals(lastPublishedActivity)
-                && result.getConfidence() < 0.99) {
+        // Debounce: skip if the derived activity hasn't meaningfully changed —
+        // UNLESS the heartbeat is due, so the integration stays fresh (see
+        // HEARTBEAT_MS) and OmniPresence never reverts to the raw "Java" window.
+        final long nowMs = System.currentTimeMillis();
+        final boolean unchanged = result.getActivity().equals(lastPublishedActivity)
+                && result.getConfidence() < 0.99;
+        if (unchanged && (nowMs - lastPublishMs) < HEARTBEAT_MS) {
             return;
         }
         lastPublishedActivity = result.getActivity();
+        lastPublishMs = nowMs;
 
         String accountName = config.shareAccountName()
             ? (client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null)
@@ -281,6 +302,6 @@ public class OmniPresencePlugin extends Plugin {
         double minConfidence = config.minConfidencePercent() / 100.0;
 
         String endpoint = ENDPOINT_HOST + config.port() + ENDPOINT_PATH;
-        publisher.publish(endpoint, result, accountName, minConfidence);
+        publisher.publish(endpoint, result, accountName, minConfidence, signals);
     }
 }

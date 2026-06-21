@@ -3,6 +3,7 @@
 #include "ActiveWindowWatcher.h"
 #include "DiscordPresenceClient.h"
 #include "LocalContextServer.h"
+#include "NamedPipeInterceptor.h"
 #include "ConfigStore.h"
 #include "TemplateEngine.h"
 #include <QTimer>
@@ -13,6 +14,9 @@
 #include <QProcess>
 #include <QDesktopServices>
 #include <QColor>
+#include <QFile>
+#include <QTextStream>
+#include <QMutex>
 
 namespace OmniPresence {
 
@@ -76,6 +80,7 @@ AppController::AppController(QObject* parent)
     , m_contextServer(std::make_unique<LocalContextServer>(&m_integrationContext,
                                                            LocalContextServer::DEFAULT_PORT,
                                                            this))
+    , m_runeliteInterceptor(std::make_unique<NamedPipeInterceptor>(this))
 {
     m_watcher = createActiveWindowWatcher(this);
 
@@ -85,6 +90,9 @@ AppController::AppController(QObject* parent)
 
     connect(m_contextServer.get(), &LocalContextServer::contextUpdated,
             this,                  &AppController::onIntegrationContextUpdated);
+
+    connect(m_runeliteInterceptor.get(), &NamedPipeInterceptor::activityCaptured,
+            this,                        &AppController::onRuneliteActivityCaptured);
 
     connect(m_discordClient.get(), &DiscordPresenceClient::connectionStatusChanged,
             this, [this](DiscordConnectionStatus status) {
@@ -125,6 +133,7 @@ void AppController::initialise() {
     }
 
     m_contextServer->start();
+    m_runeliteInterceptor->start();
     m_watcher->start();
     m_discordCallbackTimer->start();
 }
@@ -176,6 +185,18 @@ void AppController::onIntegrationContextUpdated(const QString& source) {
     evaluateAndPublish();
 }
 
+void AppController::onRuneliteActivityCaptured(const QString& activity,
+                                               const QString& location)
+{
+    // Called via queued connection from the NamedPipeInterceptor worker thread;
+    // safe to touch IntegrationContext here (main event loop).
+    QJsonObject o;
+    o[QStringLiteral("activity")] = activity;
+    o[QStringLiteral("location")] = location;
+    m_integrationContext.update(QStringLiteral("runelite"), o);
+    evaluateAndPublish();
+}
+
 void AppController::onDiscordCallbackTimer() {
     m_discordClient->runCallbacks();
 }
@@ -198,7 +219,61 @@ void AppController::evaluateAndPublish() {
 
     m_lastPublishedPresence = candidate;
     m_lastUpdateTime        = QDateTime::currentDateTimeUtc();
+    logPresenceEvent(candidate);
     m_discordClient->updatePresence(candidate);
+}
+
+void AppController::logPresenceEvent(const PresencePayload& p) {
+    // Clean, human-readable timeline of what actually published and why — the
+    // "window" used to spot misfires (e.g. "Training Prayer" mid-Slayer) and
+    // hand corrections back for tuning. Lives next to the debug log; truncated
+    // once per launch so it stays a readable session window, not a growing dump.
+    static QMutex mutex;
+    static const QString path = [] {
+        QString base = qEnvironmentVariable("LOCALAPPDATA");
+        if (base.isEmpty()) base = QDir::tempPath();
+        const QString dir = base + QStringLiteral("/OmniPresence");
+        QDir().mkpath(dir);
+        const QString f = dir + QStringLiteral("/presence-events.log");
+        QFile(f).open(QIODevice::WriteOnly | QIODevice::Truncate); // truncate on launch
+        return f;
+    }();
+
+    // The "why": when this presence was actually driven by the RuneLite plugin,
+    // show its raw signal trail (so a wrong reading shows exactly which signals
+    // caused it). Detect that by the presence reflecting the runelite activity /
+    // location — NOT mere freshness, since the plugin keeps POSTing in the
+    // background while you're on another window. Otherwise name the matched rule.
+    QString why;
+    if (const IntegrationPayload* rl = m_integrationContext.getFresh(QStringLiteral("runelite"))) {
+        const QString activity = rl->field(QStringLiteral("activity"));
+        const QString location = rl->field(QStringLiteral("location"));
+        const bool runeliteDriven =
+            (!activity.isEmpty() && (p.name == activity || p.details == activity)) ||
+            (!location.isEmpty() && p.state == location);
+        if (runeliteDriven) {
+            why = rl->field(QStringLiteral("signals"));
+        }
+    }
+    if (why.isEmpty()) {
+        why = p.matchedRuleName.isEmpty()
+            ? QStringLiteral("(generic)")
+            : QStringLiteral("rule:%1").arg(p.matchedRuleName);
+    }
+
+    QString main = QStringLiteral("\"%1\"").arg(p.name);
+    if (!p.state.isEmpty())   main += QStringLiteral(" | %1").arg(p.state);
+    if (!p.details.isEmpty() && p.details != p.state)
+        main += QStringLiteral(" (%1)").arg(p.details);
+    if (p.isPrivateFallback)  main += QStringLiteral(" [private]");
+
+    QMutexLocker lock(&mutex);
+    QFile fh(path);
+    if (fh.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&fh);
+        out << QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))
+            << "  " << main << "   <- " << why << '\n';
+    }
 }
 
 // ── QML-invokable actions ─────────────────────────────────────────────────────
@@ -464,7 +539,7 @@ QString AppController::generateArt(int ruleIndex, const QString& monogram, const
     const QString out = QDir(m_artStore.artDir()).filePath(key + QStringLiteral(".png"));
 
     QString err;
-    if (!ArtStore::renderMonogram(out, mono, accent, &err)) {
+    if (!ArtStore::renderMonogram(out, mono, accent, name, &err)) {
         m_discordError = err;
         emit discordStatusChanged();
         return {};

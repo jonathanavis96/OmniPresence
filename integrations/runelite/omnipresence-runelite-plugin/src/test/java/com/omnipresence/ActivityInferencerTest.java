@@ -64,6 +64,61 @@ public class ActivityInferencerTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Combat byproduct XP must NOT be mislabelled as skill training
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void prayerXpDuringSlayerGap_staysSlaying_notTrainingPrayer() {
+        // Slaying Tormented Demons: first poll sees the interaction + Slayer XP.
+        ActivityInferencer.InferenceResult combat = inferencer.infer(
+            "Tormented Demon", 808, 18, 6557, false, true); // Catacombs
+        assertEquals("Slaying Tormented Demons", combat.getActivity());
+
+        // Next poll: interaction briefly decayed to null and the last XP drop in the
+        // window was Prayer (Soul Split / offensive-prayer side-effect). This used to
+        // flip to "Training Prayer". It must instead hold the recent combat activity.
+        ActivityInferencer.InferenceResult gap = inferencer.infer(
+            null, -1, 5, 6557, false, true); // Prayer XP, no NPC
+        assertEquals("Slaying Tormented Demons", gap.getActivity());
+    }
+
+    @Test
+    public void barePrayerXp_noCombat_isIdle_notTrainingPrayer() {
+        // Fresh inferencer, no prior combat: a lone Prayer XP drop with no animation
+        // and no NPC is a combat byproduct, never a standalone "Training Prayer".
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, 5, -1, false, true); // Prayer XP only
+        assertEquals("Idle", result.getActivity());
+    }
+
+    @Test
+    public void bareHitpointsXp_noCombat_isIdle() {
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, 3, -1, false, true); // Hitpoints XP only
+        assertEquals("Idle", result.getActivity());
+    }
+
+    @Test
+    public void nonCombatXpFallback_stillTrains() {
+        // Non-combat skills with no animation must keep the XP fallback (e.g. Agility,
+        // which has no distinct animation in our set). Only combat skills are demoted.
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, 16, -1, false, true); // Agility XP
+        assertEquals("Training Agility", result.getActivity());
+    }
+
+    @Test
+    public void combatStickiness_expires_afterSustainedIdle() {
+        // After combat, stickiness bridges ONE ambiguous poll, then releases to Idle
+        // so a genuinely-finished fight doesn't linger forever.
+        inferencer.infer("Tormented Demon", 808, 18, 6557, false, true); // Slaying (sticky armed)
+        inferencer.infer(null, -1, 5, 6557, false, true);                // bridged (sticky spent)
+        ActivityInferencer.InferenceResult released = inferencer.infer(
+            null, -1, -1, 6557, false, true);                            // nothing left → Idle
+        assertEquals("Idle", released.getActivity());
+    }
+
+    // ---------------------------------------------------------------------------
     // Bossing inference
     // ---------------------------------------------------------------------------
 

@@ -26,6 +26,7 @@ namespace OmniPresence {
 class ActiveWindowWatcher;
 class DiscordPresenceClient;
 class LocalContextServer;
+class NamedPipeInterceptor;
 class ConfigStore;
 
 class AppController : public QObject {
@@ -143,11 +144,18 @@ signals:
 private slots:
     void onActiveWindowChanged(const OmniPresence::WindowInfo& info);
     void onIntegrationContextUpdated(const QString& source);
+    void onRuneliteActivityCaptured(const QString& activity, const QString& location);
     void onDiscordCallbackTimer();
     void onCaptureTick();
 
 private:
     void evaluateAndPublish();
+
+    /// Append one human-readable line to presence-events.log on each real
+    /// presence change (what published + the signals behind it). This is the
+    /// "clean window" used to spot misfires and tune the inferencer.
+    void logPresenceEvent(const PresencePayload& payload);
+
     QString sourceForKey(const QString& key) const;
     /// Persist a freshly-stored art key onto a rule, then open portal + reveal file.
     QString finishArtImport(int ruleIndex, const QString& key, const QString& outPath);
@@ -157,6 +165,7 @@ private:
     std::unique_ptr<ActiveWindowWatcher>    m_watcher;
     std::unique_ptr<DiscordPresenceClient>  m_discordClient;
     std::unique_ptr<LocalContextServer>     m_contextServer;
+    std::unique_ptr<NamedPipeInterceptor>   m_runeliteInterceptor;
     std::unique_ptr<ConfigStore>            m_configStore;
 
     IntegrationContext   m_integrationContext;

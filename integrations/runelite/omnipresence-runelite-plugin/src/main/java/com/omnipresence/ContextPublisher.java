@@ -47,12 +47,15 @@ public class ContextPublisher {
      * @param inference         Inferred activity/skill/target.
      * @param accountName       Null unless the user enabled shareAccountName.
      * @param minConfidence     Minimum confidence (0.0–1.0) below which we skip.
+     * @param signals           Diagnostic trail of the raw signals behind this
+     *                          inference (for OmniPresence's presence-events.log).
      */
     public void publish(
         String endpointUrl,
         ActivityInferencer.InferenceResult inference,
         String accountName,
-        double minConfidence
+        double minConfidence,
+        String signals
     ) {
         if (inference.getConfidence() < minConfidence) {
             log.debug("OmniPresence: skipping low-confidence context ({:.2f} < {:.2f})",
@@ -70,6 +73,7 @@ public class ContextPublisher {
             .location(inference.getLocation())
             .confidence(inference.getConfidence())
             .timestamp(Instant.now().toString())
+            .signals(signals)
             .build();
 
         String body = gson.toJson(ctx);
@@ -78,7 +82,9 @@ public class ContextPublisher {
             try {
                 Request request = new Request.Builder()
                     .url(endpointUrl)
-                    .post(RequestBody.create(body, JSON))
+                    // okhttp 3.x argument order (MediaType, String) — RuneLite ships
+                    // okhttp 3.14.x at runtime; this call is also valid (deprecated) on 4.x.
+                    .post(RequestBody.create(JSON, body))
                     .build();
 
                 try (Response response = http.newCall(request).execute()) {
