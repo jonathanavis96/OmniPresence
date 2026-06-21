@@ -28,7 +28,7 @@
       "activityNameTemplate": "{{runelite.activity}}",
       "detailsTemplate": "",
       "stateTemplate": "{{runelite.location}}",
-      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/osrs.png?v=3",
+      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/osrs.png?v=4",
       "largeImageText": "Old School RuneScape",
       "smallImageKey": "",
       "smallImageText": "",
@@ -148,7 +148,7 @@
     },
     {
       "enabled": true,
-      "priority": 90,
+      "priority": 1000,
       "name": "Chrome (generic)",
       "matchProcessName": "chrome.exe",
       "matchExecutablePath": "",

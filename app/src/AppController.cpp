@@ -72,6 +72,17 @@ void applyField(Rule& r, const QString& f, const QVariant& v) {
     else if (f == QLatin1String("privacyLevel"))         r.privacyLevel = PrivacyLevel(v.toInt());
 }
 
+// A browser rule only wins the integration pass when its source is "browser"
+// (the engine requires it to discriminate among same-source domain rules). The
+// simplified editor lets users type just a domain, so infer the source for them
+// — otherwise the rule is skipped and the Chrome generic fallback takes over.
+void normalizeRule(Rule& r) {
+    if (r.matchIntegrationSource.isEmpty() &&
+        (!r.matchBrowserDomain.isEmpty() || !r.matchBrowserCategory.isEmpty())) {
+        r.matchIntegrationSource = QStringLiteral("browser");
+    }
+}
+
 } // namespace
 
 AppController::AppController(QObject* parent)
@@ -495,7 +506,9 @@ int AppController::addRule(const QVariantMap& draft) {
     r.priority= draft.value(QStringLiteral("priority"), 100).toInt();
     for (auto it = draft.constBegin(); it != draft.constEnd(); ++it)
         applyField(r, it.key(), it.value());
+    normalizeRule(r);
     m_configStore->ruleSet().addRule(r);
+    m_configStore->save();                 // persist immediately — survive restart
     emit rulesChanged();
     return m_configStore->ruleSet().rules().size() - 1;
 }
@@ -505,13 +518,16 @@ void AppController::updateRuleField(int index, const QString& field, const QVari
     if (index < 0 || index >= rules.size()) return;
     Rule r = rules[index];                 // copy
     applyField(r, field, value);
+    normalizeRule(r);
     m_configStore->ruleSet().updateRule(r);  // matches by id
+    m_configStore->save();                 // persist every edit — no lost rules
 }
 
 void AppController::deleteRule(int index) {
     const QList<Rule>& rules = m_configStore->ruleSet().rules();
     if (index < 0 || index >= rules.size()) return;
     m_configStore->ruleSet().removeRule(rules[index].id);
+    m_configStore->save();
     emit rulesChanged();
     evaluateAndPublish();
 }
