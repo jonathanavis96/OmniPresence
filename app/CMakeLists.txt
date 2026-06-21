@@ -23,6 +23,7 @@ set(OMNIPRESENCE_SOURCES
     src/RuleEngine.cpp
     src/DiscordPresenceClient.cpp
     src/LocalContextServer.cpp
+    src/NamedPipeInterceptor.cpp
     src/ConfigStore.cpp
     src/AppController.cpp
 )
@@ -42,6 +43,7 @@ set(OMNIPRESENCE_HEADERS
     include/RuleEngine.h
     include/DiscordPresenceClient.h
     include/LocalContextServer.h
+    include/NamedPipeInterceptor.h
     include/ConfigStore.h
     include/AppController.h
 )
@@ -91,7 +93,7 @@ qt_add_qml_module(omnipresence
         qml/RulesPage.qml
         qml/PreviewPage.qml
         qml/PrivacyPage.qml
-        qml/AssetManager.qml
+        qml/LogsPage.qml
     RESOURCES
         resources/README.md
         resources/assets/code.png

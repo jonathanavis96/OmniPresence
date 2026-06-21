@@ -56,59 +56,23 @@ Page {
                 }
             }
 
-            // ── Browser whitelist ─────────────────────────────────────────────
+            // ── Browser privacy (owned by the extension) ──────────────────────
             SectionCard {
                 Layout.fillWidth: true
-                cardTitle: "Browser Privacy Overrides"
+                cardTitle: "Browser Privacy"
 
                 Text {
-                    text: "When these patterns match the browser window title, the private fallback is used regardless of your rules. "
-                        + "These are applied by adding a high-priority Private rule in the rule engine."
+                    text: "Browser page titles are private by default — non-whitelisted sites "
+                        + "only ever report their domain. To let a specific site show its title "
+                        + "(e.g. a YouTube video name or the 'Show name from URL' label), open the "
+                        + "OmniPresence Browser Bridge extension in Chrome and add that domain to "
+                        + "its whitelist. That whitelist is the single place browser title privacy "
+                        + "is controlled."
                     color: "#949ba4"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
-
-                // Each item: label, description, enabled by default
-                // TODO: Wire these to ConfigStore privacy settings once the backing model is exposed.
-                ColumnLayout {
-                    spacing: 10
-
-                    ToggleRow {
-                        label: "Exact localhost titles (127.0.0.1, localhost)"
-                        description: "Hides local dev environment tabs from your presence."
-                        checked: true
-                        accentColor: "#5865f2"
-                    }
-                    ToggleRow {
-                        label: "Exact YouTube video titles"
-                        description: "Shows only 'YouTube' instead of the full video title."
-                        checked: false
-                        accentColor: "#5865f2"
-                    }
-                    ToggleRow {
-                        label: "Exact GitHub repo names"
-                        description: "Hides repository names from your presence."
-                        checked: false
-                        accentColor: "#5865f2"
-                    }
-                    ToggleRow {
-                        label: "ChatGPT / Claude / AI chat titles"
-                        description: "Replaces AI assistant conversation titles with a generic label. Default: off."
-                        checked: false
-                        accentColor: "#5865f2"
-                    }
-                }
-            }
-
-            // ── Notes ─────────────────────────────────────────────────────────
-            Text {
-                text: "All privacy overrides are evaluated at priority 1 — they always win, regardless of rules."
-                color: "#4f5660"
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
             }
 
             Item { height: 24 }

@@ -64,8 +64,8 @@ ApplicationWindow {
                         { label: "Capture",      page: "CapturePage.qml",  comp: pgCapture   },
                         { label: "Rules",        page: "RulesPage.qml",    comp: pgRules     },
                         { label: "Preview",      page: "PreviewPage.qml",  comp: pgPreview   },
+                        { label: "Logs",         page: "LogsPage.qml",     comp: pgLogs      },
                         { label: "Privacy",      page: "PrivacyPage.qml",  comp: pgPrivacy   },
-                        { label: "Assets",       page: "AssetManager.qml", comp: pgAssets    },
                     ]
 
                     delegate: Rectangle {
@@ -144,6 +144,6 @@ ApplicationWindow {
     Component { id: pgCapture;   CapturePage {} }
     Component { id: pgRules;     RulesPage {} }
     Component { id: pgPreview;   PreviewPage {} }
+    Component { id: pgLogs;      LogsPage {} }
     Component { id: pgPrivacy;   PrivacyPage {} }
-    Component { id: pgAssets;    AssetManager {} }
 }

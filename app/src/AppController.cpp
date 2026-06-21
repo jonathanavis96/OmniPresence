@@ -451,6 +451,21 @@ QString AppController::previewTemplate(const QString& tmpl) const {
     return TemplateEngine::render(tmpl, m_currentWindow, m_integrationContext);
 }
 
+static QString readLogTail(const QString& fileName, int maxLines) {
+    QString base = qEnvironmentVariable("LOCALAPPDATA");
+    if (base.isEmpty()) base = QDir::tempPath();
+    QFile f(base + QStringLiteral("/OmniPresence/") + fileName);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return QStringLiteral("(no log yet — it appears once activity is recorded)");
+    QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    while (!lines.isEmpty() && lines.last().trimmed().isEmpty()) lines.removeLast();
+    if (lines.size() > maxLines) lines = lines.mid(lines.size() - maxLines);
+    return lines.join(QLatin1Char('\n'));
+}
+
+QString AppController::presenceEventsLog() const { return readLogTail(QStringLiteral("presence-events.log"), 300); }
+QString AppController::appCoverageLog()    const { return readLogTail(QStringLiteral("app-coverage.log"), 300); }
+
 QStringList AppController::artKeys() const {
     // Bundled defaults that ship as qrc resources, plus any user-added photos.
     QStringList keys{QStringLiteral("osrs"), QStringLiteral("code")};

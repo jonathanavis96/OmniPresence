@@ -130,6 +130,10 @@ public:
     /// Render a {{template}} against the current live context — for the rule
     /// editor's live "what Discord will show" preview.
     Q_INVOKABLE QString      previewTemplate(const QString& tmpl) const;
+    /// Recent presence-events.log (this session's timeline of what published).
+    Q_INVOKABLE QString      presenceEventsLog() const;
+    /// app-coverage.log — every focused app + whether it resolved to an icon.
+    Q_INVOKABLE QString      appCoverageLog() const;
 
     // Accessors for the tray menu (non-QML)
     ConfigStore*           configStore()    const noexcept { return m_configStore.get(); }
