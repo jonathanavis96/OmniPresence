@@ -52,6 +52,27 @@ private slots:
         QCOMPARE(p.state, QStringLiteral("Grand Exchange"));
         QCOMPARE(int(p.statusDisplay), int(StatusDisplay::Name));
     }
+
+    void emptyActivityDropsDanglingSeparator() {
+        RuleSet rules;
+        rules.addRule(runeLightRule());
+
+        IntegrationContext integ;   // fresh runelite payload, but no activity yet
+        integ.update(QStringLiteral("runelite"), QJsonObject{
+            {QStringLiteral("activity"), QString()},
+            {QStringLiteral("location"), QString()},
+        });
+
+        WindowInfo win;
+        win.processName = QStringLiteral("runelite.exe");
+
+        RuleEngine engine;
+        ManualOverrideState override;
+        PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, override, prev);
+
+        QCOMPARE(p.name, QStringLiteral("RuneLight"));   // not "RuneLight – "
+    }
 };
 
 QTEST_MAIN(TestRuleEngineRender)

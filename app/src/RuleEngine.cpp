@@ -12,6 +12,7 @@
 #include "TemplateEngine.h"
 #include <QHash>
 #include <QDateTime>
+#include <QRegularExpression>
 #include <QDebug>
 
 namespace OmniPresence {
@@ -196,9 +197,22 @@ PresencePayload RuleEngine::resolveRule(const Rule&               rule,
 {
     const TemplateContext ctx = TemplateEngine::buildContext(window, integrations);
 
+    // Strip a dangling separator left when a combined template like
+    // "RuneLight – {{runelite.activity}}" resolves with an empty variable
+    // (e.g. the RuneLite plugin isn't feeding activity) → "RuneLight" not
+    // "RuneLight – ".
+    auto tidy = [](QString s) {
+        s = s.trimmed();
+        static const QRegularExpression trail(QStringLiteral("\\s*[\\x{2013}\\x{2014}\\-|:\\x{00B7}]+\\s*$"));
+        static const QRegularExpression lead(QStringLiteral("^\\s*[\\x{2013}\\x{2014}\\-|:\\x{00B7}]+\\s*"));
+        s.remove(trail);
+        s.remove(lead);
+        return s.trimmed();
+    };
+
     PresencePayload p;
     p.activityType   = rule.activityType;
-    p.name           = TemplateEngine::render(rule.activityNameTemplate, ctx);
+    p.name           = tidy(TemplateEngine::render(rule.activityNameTemplate, ctx));
     p.details        = TemplateEngine::render(rule.detailsTemplate,      ctx);
     p.state          = TemplateEngine::render(rule.stateTemplate,        ctx);
     p.largeImageKey  = rule.largeImageKey;

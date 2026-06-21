@@ -56,7 +56,7 @@
       "activityType": "Playing",
       "activityNameTemplate": "Code",
       "detailsTemplate": "Working on {{terminal.repo or vscode.workspace or window.title}}",
-      "stateTemplate": "{{terminal.command_summary or vscode.current_task or window.title}}",
+      "stateTemplate": "{{terminal.command_summary or vscode.current_task}}",
       "largeImageKey": "code",
       "largeImageText": "Coding",
       "smallImageKey": "",

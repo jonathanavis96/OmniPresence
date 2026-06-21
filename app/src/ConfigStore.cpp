@@ -165,17 +165,21 @@ void ConfigStore::migrateRuleTemplates() {
     for (Rule r : rules) {
         if (r.matchIntegrationSource != QLatin1String("terminal"))
             continue;
-        auto addFallback = [](QString& tmpl) -> bool {
-            if (tmpl.contains(QLatin1String("window.title")) ||
-                !tmpl.contains(QLatin1String("{{")))
-                return false;
-            // Insert " or window.title" before the closing braces of each {{...}}.
-            tmpl.replace(QLatin1String("}}"), QLatin1String(" or window.title}}"));
-            return true;
-        };
-        bool d = addFallback(r.detailsTemplate);
-        bool s = addFallback(r.stateTemplate);
-        if (d || s) { m_ruleSet.updateRule(r); changed = true; }
+        bool touched = false;
+        // Add the window.title fallback to the DETAILS line only (so a terminal
+        // titled "RAM" shows "Working on RAM"). Deliberately NOT the state line —
+        // that would duplicate the title as a redundant third line.
+        if (!r.detailsTemplate.contains(QLatin1String("window.title")) &&
+            r.detailsTemplate.contains(QLatin1String("{{"))) {
+            r.detailsTemplate.replace(QLatin1String("}}"), QLatin1String(" or window.title}}"));
+            touched = true;
+        }
+        // Undo any earlier over-eager migration that added it to the state line.
+        if (r.stateTemplate.contains(QLatin1String(" or window.title}}"))) {
+            r.stateTemplate.replace(QLatin1String(" or window.title}}"), QLatin1String("}}"));
+            touched = true;
+        }
+        if (touched) { m_ruleSet.updateRule(r); changed = true; }
     }
     if (changed) qDebug() << "[ConfigStore] migrated terminal rule templates (window.title fallback)";
 }
