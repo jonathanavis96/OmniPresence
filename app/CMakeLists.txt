@@ -19,6 +19,7 @@ set(OMNIPRESENCE_SOURCES
     src/Rule.cpp
     src/IntegrationContext.cpp
     src/TemplateEngine.cpp
+    src/ArtStore.cpp
     src/RuleEngine.cpp
     src/DiscordPresenceClient.cpp
     src/LocalContextServer.cpp

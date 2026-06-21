@@ -13,3 +13,11 @@ add_executable(test_template_engine
 target_include_directories(test_template_engine PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
 target_link_libraries(test_template_engine PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME test_template_engine COMMAND test_template_engine)
+
+add_executable(test_art_store
+    test_art_store.cpp
+    ${OMNI_TEST_SRC}/ArtStore.cpp
+)
+target_include_directories(test_art_store PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
+target_link_libraries(test_art_store PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME test_art_store COMMAND test_art_store)
