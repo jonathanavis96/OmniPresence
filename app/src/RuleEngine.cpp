@@ -142,18 +142,25 @@ std::optional<Rule> RuleEngine::matchRule(const QList<Rule>&        sortedRules,
     const QString browserDomain   = integrations.browserDomain();
     const QString browserCategory = integrations.browserCategory();
 
-    // Determine which integration source is "active" for the current app.
-    // Heuristic: browser is active when chrome/firefox/edge has focus;
-    // runelite/vscode/terminal are identified by their process names.
+    // Determine which integration source is "active" for the FOCUSED window.
+    // Presence follows focus, so an integration rule only wins while its own app
+    // is in the foreground. Detection is by process name, except the RuneLite
+    // *dev* client (a locally-built source jar — the only way to sideload our
+    // plugin) runs as java.exe, so we additionally recognise it by window title.
     QString activeIntegrationSource;
     {
         const QString pn = window.processName.toLower();
+        const QString wt = window.windowTitle.toLower();
         if (pn.contains(QLatin1String("chrome")) ||
             pn.contains(QLatin1String("firefox")) ||
             pn.contains(QLatin1String("msedge")) ||
             pn.contains(QLatin1String("brave"))) {
             activeIntegrationSource = QStringLiteral("browser");
-        } else if (pn.contains(QLatin1String("runelite"))) {
+        } else if (pn.contains(QLatin1String("runelite")) ||
+                   ((pn.contains(QLatin1String("java")) ||
+                     pn.contains(QLatin1String("javaw"))) &&
+                    (wt.contains(QLatin1String("runelite")) ||
+                     wt.contains(QLatin1String("old school"))))) {
             activeIntegrationSource = QStringLiteral("runelite");
         } else if (pn == QLatin1String("code.exe")) {
             activeIntegrationSource = QStringLiteral("vscode");
@@ -169,16 +176,18 @@ std::optional<Rule> RuleEngine::matchRule(const QList<Rule>&        sortedRules,
         if (!rule.enabled) continue;
 
         // ── Integration pass (priority 3) ─────────────────────────────────────
-        // A rule "owns" an integration source when that source has fresh data.
+        // An integration rule wins only when (a) its source has fresh data AND
+        // (b) its own app is the FOCUSED window. The focus gate is what lets
+        // presence follow you between apps — swapping to Claude/YouTube must not
+        // stay stuck on a still-fresh RuneLite feed.
         if (requireIntegration) {
             if (rule.matchIntegrationSource.isEmpty()) continue;
+            if (rule.matchIntegrationSource != activeIntegrationSource) continue;
             if (integrations.getFresh(rule.matchIntegrationSource) == nullptr) continue;
 
-            // Browser is FOCUS-driven: the extension only reports the foreground
-            // tab, and several rules share source "browser", so the domain must
-            // discriminate. Only match when a browser is actually focused.
+            // Browser: several rules share source "browser", so the domain must
+            // still discriminate which one wins.
             if (rule.matchIntegrationSource == QLatin1String("browser")) {
-                if (activeIntegrationSource != QLatin1String("browser")) continue;
                 if (!rule.matches(window.processName, window.executablePath,
                                   window.windowTitle, browserDomain,
                                   browserCategory, activeIntegrationSource)) {
@@ -189,14 +198,13 @@ std::optional<Rule> RuleEngine::matchRule(const QList<Rule>&        sortedRules,
                 return rule;
             }
 
-            // Other sources (runelite/terminal/vscode) are DATA-driven: the live
-            // feed is the signal, so we deliberately IGNORE the focused process.
-            // This is what lets the locally-built RuneLite dev client (which runs
-            // as java.exe, not RuneLite.exe) be recognised, and keeps presence
-            // sticky while the plugin keeps POSTing — even when alt-tabbed away.
+            // Other sources (runelite/terminal/vscode): the app is focused and the
+            // feed is fresh, so match. We intentionally do NOT re-check the rule's
+            // matchProcessName here — the RuneLite dev client runs as java.exe, so
+            // a "RuneLite.exe" process criterion would wrongly reject it.
             qDebug() << "[RuleEngine] integration(" << rule.matchIntegrationSource
-                     << ") rule matched on fresh data:" << rule.name
-                     << "(focused proc=" << window.processName << ")";
+                     << ") rule matched (focused + fresh):" << rule.name
+                     << "proc=" << window.processName;
             return rule;
         }
 
