@@ -54,7 +54,7 @@
       "matchBrowserCategory": "",
       "matchIntegrationSource": "terminal",
       "activityType": "Playing",
-      "activityNameTemplate": "Code",
+      "activityNameTemplate": "Coding – {{terminal.title or window.title}}",
       "detailsTemplate": "Working on {{terminal.repo or vscode.workspace or window.title}}",
       "stateTemplate": "{{terminal.command_summary or vscode.current_task}}",
       "largeImageKey": "code",

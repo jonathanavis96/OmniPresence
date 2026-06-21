@@ -26,6 +26,21 @@ static Rule runeLightRule() {
     return r;
 }
 
+static Rule terminalRule() {
+    Rule r;
+    r.id                     = QStringLiteral("term");
+    r.name                   = QStringLiteral("Coding");
+    r.enabled                = true;
+    r.priority               = 20;
+    r.matchProcessName       = QStringLiteral("WindowsTerminal.exe");
+    r.matchIntegrationSource = QStringLiteral("terminal");
+    r.activityType           = ActivityType::Playing;
+    r.activityNameTemplate   = QStringLiteral("Coding – {{terminal.title or window.title}}");
+    r.largeImageKey          = QStringLiteral("code");
+    r.privacyLevel           = PrivacyLevel::Public;
+    return r;
+}
+
 class TestRuleEngineRender : public QObject {
     Q_OBJECT
 private slots:
@@ -72,6 +87,33 @@ private slots:
         const PresencePayload p = engine.evaluate(win, integ, rules, override, prev);
 
         QCOMPARE(p.name, QStringLiteral("RuneLight"));   // not "RuneLight – "
+    }
+
+    void terminalMainLineUsesTabTitle() {
+        RuleSet rules; rules.addRule(terminalRule());
+        IntegrationContext integ;
+        integ.update(QStringLiteral("terminal"), QJsonObject{
+            {QStringLiteral("repo"), QString()},
+        });
+        WindowInfo win;
+        win.processName = QStringLiteral("windowsterminal.exe");
+        win.windowTitle = QStringLiteral("RAM");
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev);
+        QCOMPARE(p.name, QStringLiteral("Coding – RAM"));
+    }
+
+    void terminalNoTitleDropsSeparator() {
+        RuleSet rules; rules.addRule(terminalRule());
+        IntegrationContext integ;
+        integ.update(QStringLiteral("terminal"), QJsonObject{
+            {QStringLiteral("repo"), QString()},
+        });
+        WindowInfo win;
+        win.processName = QStringLiteral("windowsterminal.exe");   // no windowTitle
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev);
+        QCOMPARE(p.name, QStringLiteral("Coding"));
     }
 };
 
