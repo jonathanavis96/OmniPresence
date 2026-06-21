@@ -12,9 +12,12 @@
 #include "PresencePayload.h"
 #include "IntegrationContext.h"
 #include "RuleEngine.h"
+#include "ArtStore.h"
 #include <QObject>
 #include <QString>
 #include <QDateTime>
+#include <QVariantList>
+#include <QVariantMap>
 #include <memory>
 
 namespace OmniPresence {
@@ -38,6 +41,9 @@ class AppController : public QObject {
     Q_PROPERTY(QString  presenceDetails     READ presenceDetails     NOTIFY presenceChanged)
     Q_PROPERTY(QString  presenceState       READ presenceState       NOTIFY presenceChanged)
     Q_PROPERTY(bool     isPrivateFallback   READ isPrivateFallback   NOTIFY presenceChanged)
+    Q_PROPERTY(QString  presenceLargeImageSource READ presenceLargeImageSource NOTIFY presenceChanged)
+    Q_PROPERTY(QString  presenceSmallImageSource READ presenceSmallImageSource NOTIFY presenceChanged)
+    Q_PROPERTY(QVariantList availableContextFields READ availableContextFields NOTIFY presenceChanged)
 
     Q_PROPERTY(bool     discordConnected    READ discordConnected    NOTIFY discordStatusChanged)
     Q_PROPERTY(QString  discordStatus       READ discordStatus       NOTIFY discordStatusChanged)
@@ -66,6 +72,9 @@ public:
     QString  presenceDetails()    const;
     QString  presenceState()      const;
     bool     isPrivateFallback()  const;
+    QString  presenceLargeImageSource() const;
+    QString  presenceSmallImageSource() const;
+    QVariantList availableContextFields() const;
     bool     discordConnected()   const;
     QString  discordStatus()      const;
     QString  discordError()       const { return m_discordError; }
@@ -91,6 +100,25 @@ public:
     Q_INVOKABLE void saveConfig();
     Q_INVOKABLE void reloadConfig();
 
+    // ── Rule CRUD bridge (QML) ────────────────────────────────────────────────
+    /// [{index,name,enabled,priority}] in config (insertion) order.
+    Q_INVOKABLE QVariantList rulesList() const;
+    /// All editable fields of one rule (empty map if index out of range).
+    Q_INVOKABLE QVariantMap  ruleAt(int index) const;
+    /// Append a rule from a draft map; returns the new index.
+    Q_INVOKABLE int          addRule(const QVariantMap& draft);
+    /// Update a single field of the rule at `index`.
+    Q_INVOKABLE void         updateRuleField(int index, const QString& field, const QVariant& value);
+    /// Delete the rule at `index`.
+    Q_INVOKABLE void         deleteRule(int index);
+    /// Persist the rule set to disk.
+    Q_INVOKABLE void         saveRules();
+    /// Build a draft rule from the captured window; returns its new index (-1 if none).
+    Q_INVOKABLE int          seedRuleFromCapture();
+    /// Import a local image as the rule's art, persist, open the portal for upload.
+    /// Returns the assigned art key ("" on failure).
+    Q_INVOKABLE QString      importPhoto(int ruleIndex, const QString& fileUrl);
+
     // Accessors for the tray menu (non-QML)
     ConfigStore*           configStore()    const noexcept { return m_configStore.get(); }
     DiscordPresenceClient* discordClient()  const noexcept { return m_discordClient.get(); }
@@ -102,6 +130,7 @@ signals:
     void privacyModeChanged();
     void pauseChanged();
     void captureStateChanged();
+    void rulesChanged();
 
 private slots:
     void onActiveWindowChanged(const OmniPresence::WindowInfo& info);
@@ -111,6 +140,9 @@ private slots:
 
 private:
     void evaluateAndPublish();
+    QString sourceForKey(const QString& key) const;
+
+    ArtStore m_artStore;
 
     std::unique_ptr<ActiveWindowWatcher>    m_watcher;
     std::unique_ptr<DiscordPresenceClient>  m_discordClient;

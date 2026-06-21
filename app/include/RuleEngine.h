@@ -43,6 +43,12 @@ public:
         const ManualOverrideState&  overrideState,
         const PresencePayload&      previousPayload) const;
 
+    /// Build a generic, title-safe presence for an unmatched window when private
+    /// mode is OFF — shows the friendly app name (never the window title) so the
+    /// user sees real activity instead of the private fallback. Public so the UI
+    /// can derive a friendly main line when seeding a rule from a captured window.
+    [[nodiscard]] static PresencePayload genericPresence(const WindowInfo& window);
+
 private:
     /// Try to match rules at a given specificity level.
     /// Returns the first matching rule or nullopt.
@@ -55,11 +61,6 @@ private:
 
     /// Build the private fallback payload (used when paused or private mode is on).
     [[nodiscard]] static PresencePayload privateFallback();
-
-    /// Build a generic, title-safe presence for an unmatched window when private
-    /// mode is OFF — shows the friendly app name (never the window title) so the
-    /// user sees real activity instead of the private fallback.
-    [[nodiscard]] static PresencePayload genericPresence(const WindowInfo& window);
 
     /// Resolve templates and fill a PresencePayload from a matched Rule.
     [[nodiscard]] PresencePayload resolveRule(

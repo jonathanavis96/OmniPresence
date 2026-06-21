@@ -4,10 +4,69 @@
 #include "DiscordPresenceClient.h"
 #include "LocalContextServer.h"
 #include "ConfigStore.h"
+#include "TemplateEngine.h"
 #include <QTimer>
 #include <QDebug>
+#include <QUrl>
+#include <QUuid>
+#include <QDir>
+#include <QProcess>
+#include <QDesktopServices>
 
 namespace OmniPresence {
+
+// ── Rule <-> QVariantMap mapping helpers ────────────────────────────────────
+namespace {
+
+QVariantMap ruleToMap(int index, const Rule& r) {
+    return QVariantMap{
+        {QStringLiteral("index"),                index},
+        {QStringLiteral("id"),                   r.id},
+        {QStringLiteral("name"),                 r.name},
+        {QStringLiteral("enabled"),              r.enabled},
+        {QStringLiteral("priority"),             r.priority},
+        {QStringLiteral("matchProcessName"),     r.matchProcessName},
+        {QStringLiteral("matchExecutablePath"),  r.matchExecutablePath},
+        {QStringLiteral("matchWindowTitle"),     r.matchWindowTitle},
+        {QStringLiteral("matchWindowTitleRegex"),r.matchWindowTitleRegex},
+        {QStringLiteral("matchBrowserDomain"),   r.matchBrowserDomain},
+        {QStringLiteral("matchBrowserCategory"), r.matchBrowserCategory},
+        {QStringLiteral("matchIntegrationSource"),r.matchIntegrationSource},
+        {QStringLiteral("activityNameTemplate"), r.activityNameTemplate},
+        {QStringLiteral("detailsTemplate"),      r.detailsTemplate},
+        {QStringLiteral("stateTemplate"),        r.stateTemplate},
+        {QStringLiteral("largeImageKey"),        r.largeImageKey},
+        {QStringLiteral("largeImageText"),       r.largeImageText},
+        {QStringLiteral("smallImageKey"),        r.smallImageKey},
+        {QStringLiteral("smallImageText"),       r.smallImageText},
+        {QStringLiteral("timestampMode"),        int(r.timestampMode)},
+        {QStringLiteral("privacyLevel"),         int(r.privacyLevel)},
+    };
+}
+
+void applyField(Rule& r, const QString& f, const QVariant& v) {
+    if      (f == QLatin1String("name"))                 r.name = v.toString();
+    else if (f == QLatin1String("enabled"))              r.enabled = v.toBool();
+    else if (f == QLatin1String("priority"))             r.priority = v.toInt();
+    else if (f == QLatin1String("matchProcessName"))     r.matchProcessName = v.toString();
+    else if (f == QLatin1String("matchExecutablePath"))  r.matchExecutablePath = v.toString();
+    else if (f == QLatin1String("matchWindowTitle"))     r.matchWindowTitle = v.toString();
+    else if (f == QLatin1String("matchWindowTitleRegex"))r.matchWindowTitleRegex = v.toBool();
+    else if (f == QLatin1String("matchBrowserDomain"))   r.matchBrowserDomain = v.toString();
+    else if (f == QLatin1String("matchBrowserCategory")) r.matchBrowserCategory = v.toString();
+    else if (f == QLatin1String("matchIntegrationSource"))r.matchIntegrationSource = v.toString();
+    else if (f == QLatin1String("activityNameTemplate")) r.activityNameTemplate = v.toString();
+    else if (f == QLatin1String("detailsTemplate"))      r.detailsTemplate = v.toString();
+    else if (f == QLatin1String("stateTemplate"))        r.stateTemplate = v.toString();
+    else if (f == QLatin1String("largeImageKey"))        r.largeImageKey = v.toString();
+    else if (f == QLatin1String("largeImageText"))       r.largeImageText = v.toString();
+    else if (f == QLatin1String("smallImageKey"))        r.smallImageKey = v.toString();
+    else if (f == QLatin1String("smallImageText"))       r.smallImageText = v.toString();
+    else if (f == QLatin1String("timestampMode"))        r.timestampMode = TimestampMode(v.toInt());
+    else if (f == QLatin1String("privacyLevel"))         r.privacyLevel = PrivacyLevel(v.toInt());
+}
+
+} // namespace
 
 AppController::AppController(QObject* parent)
     : QObject(parent)
@@ -230,6 +289,152 @@ void AppController::saveConfig() {
 void AppController::reloadConfig() {
     m_configStore->load();
     evaluateAndPublish();
+}
+
+// ── Art sources + available context (Task 5) ───────────────────────────────────
+
+QString AppController::sourceForKey(const QString& key) const {
+    if (key.isEmpty()) return {};
+    const QString local = m_artStore.localPathForKey(key);
+    if (!local.isEmpty()) return QUrl::fromLocalFile(local).toString();
+    return QStringLiteral("qrc:/OmniPresence/resources/assets/") + key + QStringLiteral(".png");
+}
+
+QString AppController::presenceLargeImageSource() const { return sourceForKey(m_currentPresence.largeImageKey); }
+QString AppController::presenceSmallImageSource() const { return sourceForKey(m_currentPresence.smallImageKey); }
+
+QVariantList AppController::availableContextFields() const {
+    const TemplateContext ctx = TemplateEngine::buildContext(m_currentWindow, m_integrationContext);
+    static const QVector<QPair<QString, QString>> known = {
+        {QStringLiteral("window.title"),      QStringLiteral("The window / tab title")},
+        {QStringLiteral("browser.domain"),    QStringLiteral("The website domain")},
+        {QStringLiteral("runelite.activity"), QStringLiteral("RuneScape activity")},
+        {QStringLiteral("runelite.location"), QStringLiteral("RuneScape location")},
+        {QStringLiteral("terminal.repo"),     QStringLiteral("Terminal repository")},
+        {QStringLiteral("vscode.workspace"),  QStringLiteral("VS Code workspace")},
+    };
+    QVariantList out;
+    for (const auto& k : known) {
+        if (!ctx.value(k.first).isEmpty()) {
+            out.append(QVariantMap{
+                {QStringLiteral("token"), QStringLiteral("{{") + k.first + QStringLiteral("}}")},
+                {QStringLiteral("label"), k.second},
+            });
+        }
+    }
+    return out;
+}
+
+// ── Rule CRUD bridge (Task 6) ──────────────────────────────────────────────────
+
+QVariantList AppController::rulesList() const {
+    QVariantList out;
+    const QList<Rule>& rules = m_configStore->ruleSet().rules();
+    for (int i = 0; i < rules.size(); ++i) {
+        const Rule& r = rules[i];
+        out.append(QVariantMap{
+            {QStringLiteral("index"),    i},
+            {QStringLiteral("name"),     r.name.isEmpty() ? QStringLiteral("(unnamed)") : r.name},
+            {QStringLiteral("enabled"),  r.enabled},
+            {QStringLiteral("priority"), r.priority},
+        });
+    }
+    return out;
+}
+
+QVariantMap AppController::ruleAt(int index) const {
+    const QList<Rule>& rules = m_configStore->ruleSet().rules();
+    if (index < 0 || index >= rules.size()) return {};
+    return ruleToMap(index, rules[index]);
+}
+
+int AppController::addRule(const QVariantMap& draft) {
+    Rule r;
+    r.id      = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    r.name    = draft.value(QStringLiteral("name"), QStringLiteral("New Rule")).toString();
+    r.enabled = draft.value(QStringLiteral("enabled"), true).toBool();
+    r.priority= draft.value(QStringLiteral("priority"), 100).toInt();
+    for (auto it = draft.constBegin(); it != draft.constEnd(); ++it)
+        applyField(r, it.key(), it.value());
+    m_configStore->ruleSet().addRule(r);
+    emit rulesChanged();
+    return m_configStore->ruleSet().rules().size() - 1;
+}
+
+void AppController::updateRuleField(int index, const QString& field, const QVariant& value) {
+    const QList<Rule>& rules = m_configStore->ruleSet().rules();
+    if (index < 0 || index >= rules.size()) return;
+    Rule r = rules[index];                 // copy
+    applyField(r, field, value);
+    m_configStore->ruleSet().updateRule(r);  // matches by id
+}
+
+void AppController::deleteRule(int index) {
+    const QList<Rule>& rules = m_configStore->ruleSet().rules();
+    if (index < 0 || index >= rules.size()) return;
+    m_configStore->ruleSet().removeRule(rules[index].id);
+    emit rulesChanged();
+    evaluateAndPublish();
+}
+
+void AppController::saveRules() {
+    m_configStore->save();
+    emit rulesChanged();
+    evaluateAndPublish();
+}
+
+// ── Capture → draft rule (Task 8) ──────────────────────────────────────────────
+
+int AppController::seedRuleFromCapture() {
+    if (m_currentWindow.processName.isEmpty()) return -1;
+    Rule r;
+    r.id                   = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    r.name                 = RuleEngine::genericPresence(m_currentWindow).name;
+    r.enabled              = true;
+    r.priority             = 50;
+    r.matchProcessName     = m_currentWindow.processName;
+    r.matchExecutablePath  = m_currentWindow.executablePath;
+    r.activityType         = ActivityType::Playing;
+    r.activityNameTemplate = r.name;       // main line pre-filled from the app name
+    r.privacyLevel         = PrivacyLevel::Public;
+    m_configStore->ruleSet().addRule(r);
+    emit rulesChanged();
+    return m_configStore->ruleSet().rules().size() - 1;
+}
+
+// ── Add photo (Task 9) ─────────────────────────────────────────────────────────
+
+QString AppController::importPhoto(int ruleIndex, const QString& fileUrl) {
+    const QString src = QUrl(fileUrl).toLocalFile();
+    if (src.isEmpty()) return {};
+
+    QString key = ArtStore::slugify(src);
+    const QString base = key;
+    int n = 1;
+    while (!m_artStore.localPathForKey(key).isEmpty())
+        key = base + QString::number(++n);
+
+    QString out, err;
+    if (!m_artStore.importImage(src, key, &out, &err)) {
+        m_discordError = err;
+        emit discordStatusChanged();
+        return {};
+    }
+
+    updateRuleField(ruleIndex, QStringLiteral("largeImageKey"), key);
+    m_configStore->setAssetKey(key, key);
+    saveRules();
+
+    // Open the portal Art Assets page + reveal the normalized file. No Playwright:
+    // the user does the one drag-drop themselves.
+    const QString appId = m_configStore->settings().discordAppId;
+    if (!appId.isEmpty()) {
+        QDesktopServices::openUrl(QUrl(QStringLiteral(
+            "https://discord.com/developers/applications/%1/rich-presence/assets").arg(appId)));
+    }
+    QProcess::startDetached(QStringLiteral("explorer.exe"),
+        {QStringLiteral("/select,"), QDir::toNativeSeparators(out)});
+    return key;
 }
 
 } // namespace OmniPresence
