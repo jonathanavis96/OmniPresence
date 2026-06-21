@@ -18,6 +18,7 @@
 #include <QDateTime>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QStringList>
 #include <memory>
 
 namespace OmniPresence {
@@ -118,6 +119,10 @@ public:
     /// Import a local image as the rule's art, persist, open the portal for upload.
     /// Returns the assigned art key ("" on failure).
     Q_INVOKABLE QString      importPhoto(int ruleIndex, const QString& fileUrl);
+    /// Art keys available to pick from (bundled defaults + user-added photos).
+    Q_INVOKABLE QStringList  artKeys() const;
+    /// Preview source ("file://"/"qrc:") for an arbitrary art key (for thumbnails).
+    Q_INVOKABLE QString      artSourceForKey(const QString& key) const { return sourceForKey(key); }
 
     // Accessors for the tray menu (non-QML)
     ConfigStore*           configStore()    const noexcept { return m_configStore.get(); }

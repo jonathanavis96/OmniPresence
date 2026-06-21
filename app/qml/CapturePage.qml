@@ -84,9 +84,13 @@ Page {
             visible: AppController.currentProcessName !== ""
             text: "➕  Create Rule from This Window"
             onClicked: {
-                // TODO: Pre-populate RulesPage editor with the captured values.
-                // For now navigate to the Rules page.
-                StackView.view.replace(null, Qt.resolvedUrl("RulesPage.qml"))
+                // Seed a draft rule from the captured window, then open the
+                // simplified editor pre-selected on that new rule.
+                var idx = AppController.seedRuleFromCapture()
+                if (idx >= 0)
+                    StackView.view.replace(null, Qt.resolvedUrl("RulesPage.qml"), { startIndex: idx })
+                else
+                    StackView.view.replace(null, Qt.resolvedUrl("RulesPage.qml"))
             }
 
             background: Rectangle {

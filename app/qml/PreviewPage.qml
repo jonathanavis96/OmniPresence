@@ -40,14 +40,14 @@ Page {
                 spacing: 4
 
                 Text {
-                    text: "PLAYING A GAME"
+                    text: AppController.isPrivateFallback ? "PRIVATE" : "PLAYING"
                     color: "#949ba4"
                     font.pixelSize: 10
                     font.capitalization: Font.AllUppercase
                     font.letterSpacing: 1.2
                 }
 
-                // Large image placeholder + text block
+                // Real large image (from the published payload) + text block.
                 RowLayout {
                     spacing: 12
                     Layout.fillWidth: true
@@ -55,24 +55,40 @@ Page {
                     Rectangle {
                         width: 60; height: 60; radius: 8
                         color: "#1e1f22"
+                        clip: true
 
+                        Image {
+                            id: bigArt
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            fillMode: Image.PreserveAspectCrop
+                            source: AppController.presenceLargeImageSource
+                            visible: source !== "" && status === Image.Ready
+                        }
+                        // Neutral placeholder only when there is genuinely no art.
                         Text {
                             anchors.centerIn: parent
-                            text: "🎮"
-                            font.pixelSize: 28
+                            visible: !bigArt.visible
+                            text: "—"
+                            color: "#4f5660"
+                            font.pixelSize: 22
                         }
 
-                        // Small image overlay
+                        // Real small image overlay (from the payload).
                         Rectangle {
-                            width: 20; height: 20; radius: 10
+                            width: 22; height: 22; radius: 11
                             color: "#2b2d31"
                             anchors { bottom: parent.bottom; right: parent.right; margins: -4 }
-                            visible: AppController.presenceState !== ""
+                            clip: true
+                            visible: smallArt.visible
 
-                            Text {
-                                anchors.centerIn: parent
-                                text: "💻"
-                                font.pixelSize: 12
+                            Image {
+                                id: smallArt
+                                anchors.fill: parent
+                                anchors.margins: 2
+                                fillMode: Image.PreserveAspectCrop
+                                source: AppController.presenceSmallImageSource
+                                visible: source !== "" && status === Image.Ready
                             }
                         }
                     }

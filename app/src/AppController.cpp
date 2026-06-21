@@ -300,6 +300,14 @@ QString AppController::sourceForKey(const QString& key) const {
     return QStringLiteral("qrc:/OmniPresence/resources/assets/") + key + QStringLiteral(".png");
 }
 
+QStringList AppController::artKeys() const {
+    // Bundled defaults that ship as qrc resources, plus any user-added photos.
+    QStringList keys{QStringLiteral("osrs"), QStringLiteral("code")};
+    for (const QString& k : m_configStore->assetKeys().keys())
+        if (!keys.contains(k)) keys.append(k);
+    return keys;
+}
+
 QString AppController::presenceLargeImageSource() const { return sourceForKey(m_currentPresence.largeImageKey); }
 QString AppController::presenceSmallImageSource() const { return sourceForKey(m_currentPresence.smallImageKey); }
 
