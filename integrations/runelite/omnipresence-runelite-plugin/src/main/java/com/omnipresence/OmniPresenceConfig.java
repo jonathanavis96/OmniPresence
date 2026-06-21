@@ -19,13 +19,17 @@ public interface OmniPresenceConfig extends Config {
     }
 
     @ConfigItem(
-        keyName = "endpointUrl",
-        name = "Endpoint URL",
-        description = "OmniPresence context server URL. Leave as-is unless you changed the default port.",
+        keyName = "port",
+        name = "OmniPresence port",
+        description = "Local port of the OmniPresence app on THIS computer (127.0.0.1 only). "
+            + "Your activity is sent only to the OmniPresence desktop app running locally — "
+            + "never to the internet or any third-party server. Leave as-is unless you changed "
+            + "the app's default port.",
         position = 1
     )
-    default String endpointUrl() {
-        return "http://127.0.0.1:47831/integrations/runelite/context";
+    @Range(min = 1, max = 65535)
+    default int port() {
+        return 47831;
     }
 
     @ConfigItem(
@@ -58,5 +62,18 @@ public interface OmniPresenceConfig extends Config {
     @Range(min = 2, max = 60)
     default int pollIntervalSeconds() {
         return 5;
+    }
+
+    @ConfigItem(
+        keyName = "houseLabel",
+        name = "House label",
+        description = "Text shown when you are idle inside your Player-Owned House "
+            + "(e.g. \"Chilling at Home\"). Player-owned houses are instanced, so this "
+            + "is detected from the house's map template rather than a fixed region. "
+            + "Active fighting or skilling in the house still shows that activity instead.",
+        position = 5
+    )
+    default String houseLabel() {
+        return "Chilling at Home";
     }
 }

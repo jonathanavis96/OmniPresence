@@ -270,6 +270,18 @@ void AppController::logPresenceEvent(const PresencePayload& p) {
             (!location.isEmpty() && p.state == location);
         if (runeliteDriven) {
             why = rl->field(QStringLiteral("signals"));
+            // Surface the mappable RuneScape values behind this reading, so the log
+            // shows exactly what each rule token ({{runelite.activity}} etc.) would
+            // render right now — i.e. the options you can build a rule from.
+            const QString target = rl->field(QStringLiteral("target"));
+            const QString skill  = rl->field(QStringLiteral("skill"));
+            QStringList vals;
+            if (!activity.isEmpty()) vals << QStringLiteral("activity=\"%1\"").arg(activity);
+            if (!target.isEmpty())   vals << QStringLiteral("target=\"%1\"").arg(target);
+            if (!skill.isEmpty())    vals << QStringLiteral("skill=\"%1\"").arg(skill);
+            if (!location.isEmpty()) vals << QStringLiteral("location=\"%1\"").arg(location);
+            if (!vals.isEmpty())
+                why += QStringLiteral("  |  ") + vals.join(QStringLiteral("  "));
         }
     }
     if (why.isEmpty()) {

@@ -9,6 +9,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.Skill;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.ChatMessage;
@@ -89,6 +90,13 @@ public class OmniPresencePlugin extends Plugin {
     private volatile int currentAnimation = -1;
     private volatile int recentXpSkillIndex = -1;
     private volatile int currentRegionId = -1;
+    /** Stable map-template region (POH and other instances resolve to a fixed
+     *  template even though their live region id shifts each visit). -1 outside
+     *  an instanced region. Surfaced in the presence log as tpl: for diagnosis. */
+    private volatile int currentTemplateRegionId = -1;
+    /** True when the player is inside their Player-Owned House (derived from the
+     *  template position, not the shifting instanced region id). */
+    private volatile boolean inPoh = false;
     private volatile boolean bankOpen = false;
     private volatile boolean loggedIn = false;
 
@@ -171,6 +179,23 @@ public class OmniPresencePlugin extends Plugin {
             if (wp != null) {
                 currentRegionId = wp.getRegionID();
             }
+            // POH (and other instances) shift their live region id every visit, so
+            // resolve the stable map *template* position and recognise the house by
+            // its template bounds rather than a fixed region number.
+            int tpl = -1;
+            boolean poh = false;
+            if (client.isInInstancedRegion()) {
+                LocalPoint lp = local.getLocalLocation();
+                if (lp != null) {
+                    WorldPoint tw = WorldPoint.fromLocalInstance(client, lp);
+                    if (tw != null) {
+                        tpl = tw.getRegionID();
+                        poh = isPohTemplate(tw.getX(), tw.getY());
+                    }
+                }
+            }
+            currentTemplateRegionId = tpl;
+            inPoh = poh;
             // Read the live interaction target each tick — more reliable than the
             // InteractingChanged event, which often misses the "combat ended"
             // transition. Decay ~5 ticks (~3s) after the last interaction so a
@@ -244,6 +269,20 @@ public class OmniPresencePlugin extends Plugin {
         // (No chat content is currently used — placeholder for safe system-message checks.)
     }
 
+    /**
+     * Recognise the Player-Owned House from a resolved map-template world point.
+     *
+     * The POH is an instanced area built from the Construction template block
+     * around base region 7513 (world x≈1856, y≈5696). The live region id differs
+     * every visit, but the template position is stable, so we match on a generous
+     * bounding box covering the whole template block (any house size/room). The
+     * tpl: value logged in presence-events.log lets these bounds be tightened from
+     * real readings if ever needed.
+     */
+    private static boolean isPohTemplate(int x, int y) {
+        return x >= 1850 && x <= 2115 && y >= 5630 && y <= 5765;
+    }
+
     // ---------------------------------------------------------------------------
     // Scheduled publish tick
     // ---------------------------------------------------------------------------
@@ -269,10 +308,10 @@ public class OmniPresencePlugin extends Plugin {
         // Snapshot the raw signals BEFORE inference decays them, so the diagnostic
         // trail in presence-events.log reflects exactly what infer() saw this cycle.
         final String signals = String.format(
-            "npc:%s xp:%s region:%d anim:%d bank:%b",
+            "npc:%s xp:%s region:%d tpl:%d poh:%b anim:%d bank:%b",
             interactingNpcName != null ? interactingNpcName : "(none)",
             ActivityInferencer.skillName(recentXpSkillIndex),
-            currentRegionId, currentAnimation, bankOpen);
+            currentRegionId, currentTemplateRegionId, inPoh, currentAnimation, bankOpen);
 
         ActivityInferencer.InferenceResult result = inferencer.infer(
             interactingNpcName,
@@ -280,7 +319,9 @@ public class OmniPresencePlugin extends Plugin {
             recentXpSkillIndex,
             currentRegionId,
             bankOpen,
-            loggedIn
+            loggedIn,
+            inPoh,
+            config.houseLabel()
         );
 
         // Decay the recent XP signal EVERY cycle (before the debounce), so a stale

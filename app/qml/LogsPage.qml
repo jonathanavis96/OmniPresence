@@ -70,7 +70,10 @@ Page {
             id: sv
             anchors { fill: parent; margins: 8 }
             clip: true
-            property bool atBottom: true
+            // "stick" = keep pinned to the newest line. Stays true until the USER
+            // scrolls up; a content/relayout reset (which momentarily yanks contentY
+            // to 0) must NOT flip it off, or the log fights you on every refresh.
+            property bool stick: true
 
             function toBottom() {
                 var f = sv.contentItem
@@ -86,14 +89,23 @@ Page {
                 font.pixelSize: 12
                 selectByMouse: true
                 background: Item {}
-                onTextChanged: if (sv.atBottom) Qt.callLater(sv.toBottom)
+                onTextChanged: if (sv.stick) Qt.callLater(sv.toBottom)
             }
 
             Connections {
                 target: sv.contentItem
+                // Re-pin AFTER the content height settles — fixes the old bug where
+                // toBottom() ran against a stale (small) contentHeight and landed near
+                // the top.
+                function onContentHeightChanged() {
+                    if (sv.stick) Qt.callLater(sv.toBottom)
+                }
+                // Only a genuine user drag/flick updates whether we're following;
+                // programmatic relayout (moving/dragging/flicking all false) is ignored.
                 function onContentYChanged() {
                     var f = sv.contentItem
-                    sv.atBottom = (f.contentY >= f.contentHeight - f.height - 4)
+                    if (f.moving || f.dragging || f.flicking)
+                        sv.stick = (f.contentY >= f.contentHeight - f.height - 8)
                 }
             }
         }

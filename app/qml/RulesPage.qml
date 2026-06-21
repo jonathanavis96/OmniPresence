@@ -26,6 +26,59 @@ Page {
     }
     function loadCurrent() {
         current = (selectedIndex >= 0) ? AppController.ruleAt(selectedIndex) : ({})
+        syncBuilder()
+    }
+
+    // ── Source-aware Main-line builder ────────────────────────────────────────
+    // A rule belongs to one source (RuneScape / browser / generic app). The token
+    // dropdown only offers tokens that make sense for that source — RuneScape
+    // tokens never clutter a browser or terminal rule, and vice-versa.
+    function ruleSource(c) {
+        c = c || ({})
+        var src  = (c.matchIntegrationSource || "").toLowerCase()
+        var tmpl = ((c.activityNameTemplate || "") + (c.stateTemplate || "")).toLowerCase()
+        if (src.indexOf("runelite") >= 0 || src.indexOf("osrs") >= 0 || tmpl.indexOf("runelite.") >= 0) return "runelite"
+        if ((c.matchBrowserDomain || "") !== "" || src.indexOf("browser") >= 0 || tmpl.indexOf("browser.") >= 0) return "browser"
+        return "app"
+    }
+    function tokenModel(c) {
+        var runescape = [
+            { label: "RuneScape activity",     token: "{{runelite.activity}}" },
+            { label: "RuneScape target / NPC", token: "{{runelite.target}}" },
+            { label: "RuneScape skill",        token: "{{runelite.skill}}" },
+            { label: "RuneScape location",     token: "{{runelite.location}}" }
+        ]
+        var browser = [
+            { label: "Show name from URL", token: "{{browser.label}}" },
+            { label: "Page / video title", token: "{{browser.title}}" },
+            { label: "Site name",          token: "{{browser.site}}" }
+        ]
+        var winTitle = { label: "Window / tab title",       token: "{{window.title}}" }
+        var docTitle = { label: "Document / tab name only", token: "{{window.doctitle}}" }
+        var urlLabel = { label: "Show name from URL",       token: "{{browser.label}}" }
+        var nothing  = { label: "Nothing extra",            token: "" }
+        var src = ruleSource(c)
+        if (src === "runelite") return runescape.concat([winTitle, nothing])
+        if (src === "browser")  return browser.concat([winTitle, nothing])
+        // Generic app (e.g. Windows Terminal). "Show name from URL" stays available
+        // because it's harmless and occasionally useful everywhere.
+        return [winTitle, docTitle, urlLabel, nothing]
+    }
+    // Reflect the rule's REAL template back into the two dropdowns, so the builder
+    // never lies (it used to always read "Watching / Show name from URL"). Splits
+    // "Verb {{token}}" into the verb box + the matching token entry.
+    function syncBuilder() {
+        if (typeof verbCombo === "undefined" || typeof fillCombo === "undefined") return
+        var t = root.current.activityNameTemplate || ""
+        var m = t.match(/\{\{[^}]+\}\}/)
+        var token = m ? m[0] : ""
+        var verb  = (token ? t.replace(token, "") : t).trim()
+        verbCombo.editText = verb
+        var idx = fillCombo.count - 1 // default → "Nothing extra"
+        for (var i = 0; i < fillCombo.count; i++) {
+            if (fillCombo.model[i] && fillCombo.model[i].token === token) { idx = i; break }
+        }
+        fillCombo.currentIndex = idx
     }
     function setField(field, value) {
         if (selectedIndex >= 0) AppController.updateRuleField(selectedIndex, field, value)
@@ -163,7 +216,8 @@ Page {
                         id: verbCombo
                         Layout.preferredWidth: 150
                         editable: true
-                        model: ["Watching", "Playing", "Listening to", "Browsing", "Coding", ""]
+                        // Free-text: pick one or type your own verb (e.g. "Grinding").
+                        model: ["Watching", "Playing", "Listening to", "Browsing", "Coding", "Streaming", ""]
                         onActivated: parent.build()
                         onAccepted: parent.build()
                     }
@@ -172,20 +226,17 @@ Page {
                         Layout.fillWidth: true
                         textRole: "label"
                         valueRole: "token"
-                        model: [
-                            { label: "Show name from URL",      token: "{{browser.label}}" },
-                            { label: "Page / video title",      token: "{{browser.title}}" },
-                            { label: "Site name",               token: "{{browser.site}}" },
-                            { label: "Window / tab title",      token: "{{window.title}}" },
-                            { label: "Document / tab name only", token: "{{window.doctitle}}" },
-                            { label: "RuneScape activity",      token: "{{runelite.activity}}" },
-                            { label: "RuneScape target / NPC",  token: "{{runelite.target}}" },
-                            { label: "RuneScape skill",         token: "{{runelite.skill}}" },
-                            { label: "RuneScape location",      token: "{{runelite.location}}" },
-                            { label: "Nothing extra",           token: "" }
-                        ]
+                        // Source-filtered: RuneScape rules see RuneScape tokens only,
+                        // browser rules see browser tokens only, etc.
+                        model: root.tokenModel(root.current)
                         onActivated: parent.build()
                     }
+                }
+                Text {
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                    text: "Tip: the verb box is free-text — pick one or type your own (e.g. \"Grinding\"). " +
+                          "The second box only lists values that fit this rule’s source (" + root.ruleSource(root.current) + ")."
+                    color: "#949ba4"; font.pixelSize: 11
                 }
                 // Editable raw template (source of truth) + live preview
                 TextField {

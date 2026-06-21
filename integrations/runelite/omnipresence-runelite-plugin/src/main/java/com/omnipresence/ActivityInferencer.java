@@ -161,6 +161,10 @@ public class ActivityInferencer {
     private static final Set<Integer> COMBAT_SKILL_INDICES =
         Set.of(0, 1, 2, 3, 4, 5, 6, 18);
 
+    /** Fallback label shown when inside the Player-Owned House and otherwise idle,
+     *  if the user hasn't set a custom one in the plugin config. */
+    static final String DEFAULT_HOUSE_LABEL = "Chilling at Home";
+
     /** How many subsequent polls a finished combat reading bridges before
      *  releasing to Idle. One poll (~2s) covers the brief gap between kills where
      *  the interaction target decays to null and a combat-skill XP drop lands. */
@@ -217,9 +221,35 @@ public class ActivityInferencer {
         boolean isInBank,
         boolean isLoggedIn
     ) {
+        return infer(interactingNpcName, currentAnimation, recentXpSkillIndex,
+            regionId, isInBank, isLoggedIn, false, null);
+    }
+
+    /**
+     * Inference with Player-Owned House awareness.
+     *
+     * @param inPoh      True when the player is inside their POH. POH regions are
+     *                   instanced (the raw region id shifts every visit), so this
+     *                   flag is derived plugin-side from the stable instance
+     *                   template, not from {@code regionId}.
+     * @param houseLabel User-configured label to show when idle in the POH; falls
+     *                   back to {@link #DEFAULT_HOUSE_LABEL} when null/empty. Only
+     *                   the Idle fallback is overridden — active combat/skilling
+     *                   still win.
+     */
+    public InferenceResult infer(
+        String interactingNpcName,
+        int currentAnimation,
+        int recentXpSkillIndex,
+        int regionId,
+        boolean isInBank,
+        boolean isLoggedIn,
+        boolean inPoh,
+        String houseLabel
+    ) {
         InferenceResult result = infer0(
             interactingNpcName, currentAnimation, recentXpSkillIndex,
-            regionId, isInBank, isLoggedIn);
+            regionId, isInBank, isLoggedIn, inPoh, houseLabel);
         return applyStickiness(result);
     }
 
@@ -261,7 +291,9 @@ public class ActivityInferencer {
         int recentXpSkillIndex,
         int regionId,
         boolean isInBank,
-        boolean isLoggedIn
+        boolean isLoggedIn,
+        boolean inPoh,
+        String houseLabel
     ) {
         if (!isLoggedIn) {
             return new InferenceResult("Logged out", null, null, null, 1.0);
@@ -359,7 +391,16 @@ public class ActivityInferencer {
             );
         }
 
-        // 7. Idle / unknown. Confidence sits at/above the default 0.60 filter so an
+        // 7a. Idle inside the Player-Owned House → show the house label instead of a
+        //     bare "Idle". POH is instanced (region id shifts each visit) so this is
+        //     keyed off the plugin-supplied inPoh flag, not a region number.
+        if (inPoh) {
+            final String label =
+                (houseLabel != null && !houseLabel.isEmpty()) ? houseLabel : DEFAULT_HOUSE_LABEL;
+            return new InferenceResult(label, null, null, "Player-Owned House", 0.70);
+        }
+
+        // 7b. Idle / unknown. Confidence sits at/above the default 0.60 filter so an
         //    idle reading is actually sent — otherwise a stale prior activity (e.g.
         //    "Fighting …") lingers on Discord long after the player stopped.
         return new InferenceResult("Idle", null, null, locationFromRegion(regionId), 0.60);

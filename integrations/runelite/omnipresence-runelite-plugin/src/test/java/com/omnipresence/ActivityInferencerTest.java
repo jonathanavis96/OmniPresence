@@ -119,6 +119,51 @@ public class ActivityInferencerTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Player-Owned House (POH) — instanced region, detected plugin-side and passed
+    // in as the inPoh flag. Overrides ONLY the Idle fallback with a custom label.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void idleInPoh_showsHouseLabel() {
+        // Standing idle inside the POH (instanced region id is arbitrary/shifting).
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, -1, 47487, false, true, true, "Chilling at Home");
+        assertEquals("Chilling at Home", result.getActivity());
+        assertEquals("Player-Owned House", result.getLocation());
+    }
+
+    @Test
+    public void idleInPoh_nullLabel_usesDefault() {
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, -1, 11826, false, true, true, null);
+        assertEquals("Chilling at Home", result.getActivity());
+    }
+
+    @Test
+    public void inPoh_butFighting_stillFights() {
+        // Combat dummies / pets: a real NPC interaction must win over the house label.
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            "Tormented Demon", 808, 18, 47487, false, true, true, "Chilling at Home");
+        assertEquals("Slaying Tormented Demons", result.getActivity());
+    }
+
+    @Test
+    public void inPoh_butSkilling_stillSkills() {
+        // Construction (woodcutting anim stands in): active skilling beats the house label.
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, 867, 8, 47487, false, true, true, "Chilling at Home");
+        assertEquals("Woodcutting", result.getActivity());
+    }
+
+    @Test
+    public void notInPoh_isStillIdle() {
+        // Same idle inputs but NOT in a POH → plain Idle (regression guard).
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, -1, 47487, false, true, false, "Chilling at Home");
+        assertEquals("Idle", result.getActivity());
+    }
+
+    // ---------------------------------------------------------------------------
     // Bossing inference
     // ---------------------------------------------------------------------------
 
