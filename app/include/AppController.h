@@ -119,6 +119,9 @@ public:
     /// Import a local image as the rule's art, persist, open the portal for upload.
     /// Returns the assigned art key ("" on failure).
     Q_INVOKABLE QString      importPhoto(int ruleIndex, const QString& fileUrl);
+    /// Generate a monogram tile for the rule (key = slug of its name), set it as
+    /// the rule's art, persist, and open the portal for upload. "" on failure.
+    Q_INVOKABLE QString      generateArt(int ruleIndex, const QString& monogram, const QString& accentHex);
     /// Art keys available to pick from (bundled defaults + user-added photos).
     Q_INVOKABLE QStringList  artKeys() const;
     /// Preview source ("file://"/"qrc:") for an arbitrary art key (for thumbnails).
@@ -146,6 +149,8 @@ private slots:
 private:
     void evaluateAndPublish();
     QString sourceForKey(const QString& key) const;
+    /// Persist a freshly-stored art key onto a rule, then open portal + reveal file.
+    QString finishArtImport(int ruleIndex, const QString& key, const QString& outPath);
 
     ArtStore m_artStore;
 

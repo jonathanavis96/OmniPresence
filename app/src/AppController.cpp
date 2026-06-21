@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QProcess>
 #include <QDesktopServices>
+#include <QColor>
 
 namespace OmniPresence {
 
@@ -429,6 +430,10 @@ QString AppController::importPhoto(int ruleIndex, const QString& fileUrl) {
         return {};
     }
 
+    return finishArtImport(ruleIndex, key, out);
+}
+
+QString AppController::finishArtImport(int ruleIndex, const QString& key, const QString& outPath) {
     updateRuleField(ruleIndex, QStringLiteral("largeImageKey"), key);
     m_configStore->setAssetKey(key, key);
     saveRules();
@@ -441,8 +446,30 @@ QString AppController::importPhoto(int ruleIndex, const QString& fileUrl) {
             "https://discord.com/developers/applications/%1/rich-presence/assets").arg(appId)));
     }
     QProcess::startDetached(QStringLiteral("explorer.exe"),
-        {QStringLiteral("/select,"), QDir::toNativeSeparators(out)});
+        {QStringLiteral("/select,"), QDir::toNativeSeparators(outPath)});
     return key;
+}
+
+QString AppController::generateArt(int ruleIndex, const QString& monogram, const QString& accentHex) {
+    const QList<Rule>& rules = m_configStore->ruleSet().rules();
+    if (ruleIndex < 0 || ruleIndex >= rules.size()) return {};
+
+    const QString name = rules[ruleIndex].name;
+    const QString key  = ArtStore::slugify(name.isEmpty() ? QStringLiteral("art") : name);
+    const QColor  accent = accentHex.isEmpty() ? QColor(QStringLiteral("#22d3ee"))
+                                               : QColor(accentHex);
+    const QString mono = monogram.isEmpty() ? name.left(2).toUpper() : monogram;
+
+    QDir().mkpath(m_artStore.artDir());
+    const QString out = QDir(m_artStore.artDir()).filePath(key + QStringLiteral(".png"));
+
+    QString err;
+    if (!ArtStore::renderMonogram(out, mono, accent, &err)) {
+        m_discordError = err;
+        emit discordStatusChanged();
+        return {};
+    }
+    return finishArtImport(ruleIndex, key, out);
 }
 
 } // namespace OmniPresence
