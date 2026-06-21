@@ -146,7 +146,33 @@ bool ConfigStore::parseJson(const QByteArray& data) {
     m_ruleSet  = root.contains(QStringLiteral("ruleSet"))
             ? RuleSet::fromJson(root[QStringLiteral("ruleSet")].toObject())
             : RuleSet::fromJson(root);
+    migrateRuleTemplates();
     return true;
+}
+
+void ConfigStore::migrateRuleTemplates() {
+    // Ensure terminal rules fall back to the live window title when no
+    // integration context is present (fixes "Working on " rendering blank
+    // for a terminal whose title is e.g. "RAM"). Idempotent: only touches a
+    // templated field that doesn't already reference window.title.
+    bool changed = false;
+    const QList<Rule> rules = m_ruleSet.rules();   // copy to iterate
+    for (Rule r : rules) {
+        if (r.matchIntegrationSource != QLatin1String("terminal"))
+            continue;
+        auto addFallback = [](QString& tmpl) -> bool {
+            if (tmpl.contains(QLatin1String("window.title")) ||
+                !tmpl.contains(QLatin1String("{{")))
+                return false;
+            // Insert " or window.title" before the closing braces of each {{...}}.
+            tmpl.replace(QLatin1String("}}"), QLatin1String(" or window.title}}"));
+            return true;
+        };
+        bool d = addFallback(r.detailsTemplate);
+        bool s = addFallback(r.stateTemplate);
+        if (d || s) { m_ruleSet.updateRule(r); changed = true; }
+    }
+    if (changed) qDebug() << "[ConfigStore] migrated terminal rule templates (window.title fallback)";
 }
 
 QByteArray ConfigStore::serialiseJson() const {

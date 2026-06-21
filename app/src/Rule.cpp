@@ -2,6 +2,7 @@
 #include "Rule.h"
 #include <QJsonArray>
 #include <QRegularExpression>
+#include <QUuid>
 #include <QDebug>
 #include <algorithm>
 
@@ -91,6 +92,8 @@ QJsonObject Rule::toJson() const {
 Rule Rule::fromJson(const QJsonObject& obj) {
     Rule r;
     r.id                    = obj[QStringLiteral("id")].toString();
+    if (r.id.isEmpty())     // stable id required for CRUD + safe updateRule()
+        r.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     r.name                  = obj[QStringLiteral("name")].toString();
     r.enabled               = obj[QStringLiteral("enabled")].toBool(true);
     r.priority              = obj[QStringLiteral("priority")].toInt(100);

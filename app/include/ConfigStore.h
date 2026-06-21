@@ -49,6 +49,8 @@ private:
     static QString resolveConfigPath();
     bool parseJson(const QByteArray& data);
     [[nodiscard]] QByteArray serialiseJson() const;
+    /// Idempotent in-place upgrades of loaded rules (e.g. terminal title fallback).
+    void migrateRuleTemplates();
 
     RuleSet     m_ruleSet;
     AppSettings m_settings;
