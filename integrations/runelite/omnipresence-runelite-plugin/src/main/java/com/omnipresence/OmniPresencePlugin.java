@@ -273,14 +273,13 @@ public class OmniPresencePlugin extends Plugin {
      * Recognise the Player-Owned House from a resolved map-template world point.
      *
      * The POH is an instanced area built from the Construction template block
-     * around base region 7513 (world x≈1856, y≈5696). The live region id differs
-     * every visit, but the template position is stable, so we match on a generous
-     * bounding box covering the whole template block (any house size/room). The
-     * tpl: value logged in presence-events.log lets these bounds be tightened from
-     * real readings if ever needed.
+     * around region 7790 (world base x=1920, y=7040) — confirmed from a live tpl:
+     * reading. The live region id differs every visit, but the template position is
+     * stable, so we match a generous box covering the 3×3 template-region block
+     * (regions 7789–7791 / 8045–8047 / 7533–7535), which holds any house size/room.
      */
     private static boolean isPohTemplate(int x, int y) {
-        return x >= 1850 && x <= 2115 && y >= 5630 && y <= 5765;
+        return x >= 1856 && x < 2048 && y >= 6976 && y < 7168;
     }
 
     // ---------------------------------------------------------------------------
