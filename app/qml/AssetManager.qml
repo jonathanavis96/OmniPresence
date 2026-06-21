@@ -22,13 +22,13 @@ Page {
         id: assetModel
         ListElement { slotName: "osrs";       slotLabel: "Old School RuneScape";  imageKey: "osrs";       imageText: "Playing OSRS";        thumb: "osrs" }
         ListElement { slotName: "code";       slotLabel: "VS Code / IDE";         imageKey: "code";       imageText: "Writing code";        thumb: "code" }
-        ListElement { slotName: "terminal";   slotLabel: "Terminal";              imageKey: "terminal";   imageText: "In the terminal";     thumb: "" }
-        ListElement { slotName: "youtube";    slotLabel: "YouTube";               imageKey: "youtube";    imageText: "Watching YouTube";    thumb: "" }
-        ListElement { slotName: "reddit";     slotLabel: "Reddit";                imageKey: "reddit";     imageText: "Browsing Reddit";     thumb: "" }
-        ListElement { slotName: "pihole";     slotLabel: "Pi-hole Dashboard";     imageKey: "pihole";     imageText: "Managing Pi-hole";    thumb: "" }
-        ListElement { slotName: "dashboard";  slotLabel: "Generic Dashboard";     imageKey: "dashboard";  imageText: "On a dashboard";      thumb: "" }
-        ListElement { slotName: "discord";    slotLabel: "Discord";               imageKey: "discord";    imageText: "On Discord";          thumb: "" }
-        ListElement { slotName: "fallback";   slotLabel: "Private / Fallback";    imageKey: "computer";   imageText: "Working privately";   thumb: "" }
+        ListElement { slotName: "terminal";   slotLabel: "Terminal";              imageKey: "terminal";   imageText: "In the terminal";     thumb: "terminal" }
+        ListElement { slotName: "youtube";    slotLabel: "YouTube";               imageKey: "youtube";    imageText: "Watching YouTube";    thumb: "youtube" }
+        ListElement { slotName: "reddit";     slotLabel: "Reddit";                imageKey: "reddit";     imageText: "Browsing Reddit";     thumb: "reddit" }
+        ListElement { slotName: "pihole";     slotLabel: "Pi-hole Dashboard";     imageKey: "pihole";     imageText: "Managing Pi-hole";    thumb: "pihole" }
+        ListElement { slotName: "dashboard";  slotLabel: "Generic Dashboard";     imageKey: "dashboard";  imageText: "On a dashboard";      thumb: "dashboard" }
+        ListElement { slotName: "discord";    slotLabel: "Discord";               imageKey: "discord";    imageText: "On Discord";          thumb: "discord" }
+        ListElement { slotName: "fallback";   slotLabel: "Private / Fallback";    imageKey: "computer";   imageText: "Working privately";   thumb: "computer" }
     }
 
     ColumnLayout {

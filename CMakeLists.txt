@@ -24,6 +24,11 @@ endif()
 # ── Sub-directories ────────────────────────────────────────────────────────────
 add_subdirectory(app)
 
+# ── Dev tooling (optional) ────────────────────────────────────────────────────
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/CMakeLists.txt")
+    add_subdirectory(scripts)
+endif()
+
 # ── Tests (optional – only wired when the sub-dir exists) ─────────────────────
 enable_testing()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")

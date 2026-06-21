@@ -96,6 +96,13 @@ qt_add_qml_module(omnipresence
         resources/README.md
         resources/assets/code.png
         resources/assets/osrs.png
+        resources/assets/terminal.png
+        resources/assets/youtube.png
+        resources/assets/reddit.png
+        resources/assets/pihole.png
+        resources/assets/dashboard.png
+        resources/assets/discord.png
+        resources/assets/computer.png
 )
 
 # ── Link libraries ────────────────────────────────────────────────────────────
