@@ -269,10 +269,15 @@ discordpp::ActivityTypes toSdkActivityType(ActivityType t) {
 
 void DiscordPresenceClient::sendPresenceNow() {
     if (!m_client || !m_ready) return;
-    const PresencePayload& p = m_lastSentPayload;
+    publishActivity(m_lastSentPayload, /*withAssets=*/true);
+}
+
+void DiscordPresenceClient::publishActivity(const PresencePayload& p, bool withAssets) {
+    if (!m_client || !m_ready) return;
     qDebug() << "[DiscordPresenceClient] Publishing presence:" << p.name
              << "| details=" << p.details << "| state=" << p.state
-             << "| type=" << static_cast<int>(p.activityType);
+             << "| type=" << static_cast<int>(p.activityType)
+             << "| assets=" << withAssets;
 
     discordpp::Activity activity;
     activity.SetType(toSdkActivityType(p.activityType));
@@ -296,7 +301,7 @@ void DiscordPresenceClient::sendPresenceNow() {
             break;
     }
 
-    if (!p.largeImageKey.isEmpty() || !p.smallImageKey.isEmpty()) {
+    if (withAssets && (!p.largeImageKey.isEmpty() || !p.smallImageKey.isEmpty())) {
         discordpp::ActivityAssets assets;
         if (!p.largeImageKey.isEmpty())  assets.SetLargeImage(p.largeImageKey.toStdString());
         if (!p.largeImageText.isEmpty()) assets.SetLargeText(p.largeImageText.toStdString());
@@ -311,19 +316,39 @@ void DiscordPresenceClient::sendPresenceNow() {
         activity.SetTimestamps(ts);
     }
 
+    const bool hadAssets = withAssets &&
+                           (!p.largeImageKey.isEmpty() || !p.smallImageKey.isEmpty());
+
     m_client->UpdateRichPresence(
         activity,
-        [this, p](discordpp::ClientResult result) {
+        [this, p, hadAssets](discordpp::ClientResult result) {
             if (result.Successful()) {
                 m_hasPending = false;
                 qDebug() << "[DiscordPresenceClient] Presence published OK:" << p.name;
                 emit presenceUpdated(p);
-            } else {
-                qWarning() << "[DiscordPresenceClient] UpdateRichPresence failed for"
-                           << p.name << "—" << QString::fromStdString(result.ToString());
-                emit sdkError(QStringLiteral("Failed to publish Rich Presence: %1")
-                                  .arg(QString::fromStdString(result.ToString())));
+                return;
             }
+
+            const QString err = QString::fromStdString(result.ToString());
+
+            // A missing/unuploaded art asset (ErrorType 6 "Unable to resolve …
+            // image asset") makes Discord reject the ENTIRE presence. Retry once
+            // without the images so the text presence still publishes. The fix is
+            // to upload the key under Portal → Rich Presence → Art Assets.
+            const bool assetError = err.contains(QStringLiteral("image asset"),
+                                                 Qt::CaseInsensitive) ||
+                                    err.contains(QStringLiteral("ErrorType: 6"));
+            if (hadAssets && assetError) {
+                qWarning() << "[DiscordPresenceClient] Art asset unresolved ("
+                           << err << ") — retrying without images. Upload the key "
+                              "in Portal → Rich Presence → Art Assets to show art.";
+                publishActivity(p, /*withAssets=*/false);
+                return;
+            }
+
+            qWarning() << "[DiscordPresenceClient] UpdateRichPresence failed for"
+                       << p.name << "—" << err;
+            emit sdkError(QStringLiteral("Failed to publish Rich Presence: %1").arg(err));
         });
 }
 #endif

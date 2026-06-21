@@ -77,6 +77,12 @@ private:
     void applyTokenAndConnect(const std::string& accessToken);
     /// Push the last-resolved payload to Discord (only when Status::Ready).
     void sendPresenceNow();
+    /// Build + send a single UpdateRichPresence call. When @p withAssets is true
+    /// the large/small image keys are attached; if Discord then rejects the call
+    /// because an art asset can't be resolved (ErrorType 6 — key not uploaded to
+    /// the portal), it retries once with @p withAssets=false so the text presence
+    /// still publishes instead of being dropped entirely.
+    void publishActivity(const PresencePayload& payload, bool withAssets);
 
     // Token persistence (config dir / discord_tokens.json).
     [[nodiscard]] QString tokenStorePath() const;
