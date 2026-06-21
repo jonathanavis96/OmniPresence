@@ -13,8 +13,59 @@
 #include <QStyle>     // QStyle::SP_ComputerIcon (standard fallback icon)
 #include <QWindow>    // qobject_cast<QWindow*> on the QML root + show/raise/activate
 #include <QDebug>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QMutex>
+#include <cstdio>
+
+// ── Debug log to file ───────────────────────────────────────────────────────
+// GUI-subsystem apps launched via Start-Process have no console, and Qt's
+// qDebug() only reaches OutputDebugString — invisible unless a debugger is
+// attached. Route every qDebug/qWarning/qCritical to a plain file so live
+// behaviour (presence publishes, asset-resolution results, integration POSTs,
+// which rule won) can finally be inspected after the fact. Log path:
+//   %LOCALAPPDATA%\OmniPresence\omnipresence-debug.log   (truncated each launch)
+static void fileMessageHandler(QtMsgType type,
+                               const QMessageLogContext& /*ctx*/,
+                               const QString& msg)
+{
+    static QMutex mutex;
+    static const QString path = [] {
+        QString base = qEnvironmentVariable("LOCALAPPDATA");
+        if (base.isEmpty()) base = QDir::tempPath();
+        const QString dir = base + QStringLiteral("/OmniPresence");
+        QDir().mkpath(dir);
+        const QString p = dir + QStringLiteral("/omnipresence-debug.log");
+        QFile f(p);                       // truncate on startup
+        f.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        return p;
+    }();
+
+    const char* lvl = "D";
+    switch (type) {
+        case QtInfoMsg:     lvl = "I"; break;
+        case QtWarningMsg:  lvl = "W"; break;
+        case QtCriticalMsg: lvl = "C"; break;
+        case QtFatalMsg:    lvl = "F"; break;
+        default:            lvl = "D"; break;
+    }
+
+    QMutexLocker lock(&mutex);
+    QFile f(path);
+    if (f.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&f);
+        out << QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz"))
+            << " [" << lvl << "] " << msg << '\n';
+    }
+    // Keep OutputDebugString/stderr behaviour too.
+    fprintf(stderr, "%s\n", msg.toLocal8Bit().constData());
+}
 
 int main(int argc, char* argv[]) {
+    qInstallMessageHandler(fileMessageHandler);
     // High-DPI is on by default in Qt 6.
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("OmniPresence"));

@@ -168,11 +168,36 @@ std::optional<Rule> RuleEngine::matchRule(const QList<Rule>&        sortedRules,
     for (const Rule& rule : sortedRules) {
         if (!rule.enabled) continue;
 
-        // If we are in the "requireIntegration" pass, skip rules that don't
-        // have an integration source, or whose source doesn't have fresh data.
+        // ── Integration pass (priority 3) ─────────────────────────────────────
+        // A rule "owns" an integration source when that source has fresh data.
         if (requireIntegration) {
             if (rule.matchIntegrationSource.isEmpty()) continue;
             if (integrations.getFresh(rule.matchIntegrationSource) == nullptr) continue;
+
+            // Browser is FOCUS-driven: the extension only reports the foreground
+            // tab, and several rules share source "browser", so the domain must
+            // discriminate. Only match when a browser is actually focused.
+            if (rule.matchIntegrationSource == QLatin1String("browser")) {
+                if (activeIntegrationSource != QLatin1String("browser")) continue;
+                if (!rule.matches(window.processName, window.executablePath,
+                                  window.windowTitle, browserDomain,
+                                  browserCategory, activeIntegrationSource)) {
+                    continue;
+                }
+                qDebug() << "[RuleEngine] integration(browser) rule matched:"
+                         << rule.name << "domain=" << browserDomain;
+                return rule;
+            }
+
+            // Other sources (runelite/terminal/vscode) are DATA-driven: the live
+            // feed is the signal, so we deliberately IGNORE the focused process.
+            // This is what lets the locally-built RuneLite dev client (which runs
+            // as java.exe, not RuneLite.exe) be recognised, and keeps presence
+            // sticky while the plugin keeps POSTing — even when alt-tabbed away.
+            qDebug() << "[RuleEngine] integration(" << rule.matchIntegrationSource
+                     << ") rule matched on fresh data:" << rule.name
+                     << "(focused proc=" << window.processName << ")";
+            return rule;
         }
 
         if (!rule.matches(window.processName,

@@ -122,6 +122,8 @@ void LocalContextServer::handleRequest(QTcpSocket* socket, const QByteArray& raw
         return;
     }
 
+    qDebug() << "[LocalContextServer] integration POST from" << source
+             << "fields:" << doc.object().keys();
     m_context->update(source, doc.object());
     emit contextUpdated(source);
 
