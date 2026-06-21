@@ -167,3 +167,17 @@ If the Dashboard shows "Disconnected":
 - Confirm the Application ID in `config/omnipresence.json` is correct.
 - Check that the Discord Social SDK DLL is present in `third_party/discord_social_sdk/lib/`.
 - Check that `discord_social_sdk.dll` is alongside the OmniPresence executable at runtime (copy it during build or add to PATH).
+
+## Rich Presence art assets (why your icon shows the app logo)
+
+Discord only renders a presence image if its `largeImageKey` / `smallImageKey`
+exists under **Developer Portal → your app → Rich Presence → Art Assets**. For any
+key it doesn't recognise, Discord silently falls back to the **application icon**
+(the OmniPresence "OP" logo). This is not an app bug.
+
+OmniPresence stores generated/imported tiles locally (`%APPDATA%\OmniPresence\art\<key>.png`)
+so the in-app preview is correct immediately, but **there is no API to upload art
+assets** — it's a manual step. When you Generate or Add-photo, the app reveals the
+PNG in Explorer and opens the Art Assets page; drag the file in, name the asset
+**exactly** the key shown in the upload hint (e.g. `code`, `youtube`), and Save.
+Allow a minute for Discord to propagate before the icon appears on your presence.

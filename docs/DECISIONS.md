@@ -153,3 +153,21 @@
 - JDK 11+ (for RuneLite plugin only)
 
 Any contributor working on the build system should follow the instructions in [DISCORD_SETUP.md](DISCORD_SETUP.md) and [PLAN.md](PLAN.md) Phase 1.
+
+## RuneLight game-detection vs our SDK presence (2026-06-21)
+
+"RuneLight" on the profile comes from **Discord's own game detection** (its
+registered-game database matching the RuneLite executable), independent of our
+Social-SDK Rich Presence — it shows even with our RuneLite plugin off.
+
+**Finding: no SDK-side override exists.** `third_party/discord_social_sdk/include/discordpp.h`
+exposes only `UserHandle::GameActivity()` (a *read* accessor for a user's detected
+game) — there is no API to suppress, deprioritise, or opt out of Discord's
+registered-game detection from the application/SDK side. So the app cannot stop the
+"RuneLight" label.
+
+**Resolution (client-side only):** in the Discord desktop client, **User Settings →
+Activity Settings → Registered Games** — toggle detection off for RuneLite (or remove
+it from the list); and/or **Activity Privacy → "Display currently running game as a
+status message"** off. With Discord's auto-detection disabled, the profile shows only
+OmniPresence's published presence (our set name/line). No code change shipped.
