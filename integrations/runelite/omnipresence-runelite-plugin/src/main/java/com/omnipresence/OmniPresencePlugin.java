@@ -1,7 +1,6 @@
 package com.omnipresence;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -47,7 +46,9 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @PluginDescriptor(
     name = "OmniPresence",
-    description = "Reports your OSRS activity to OmniPresence for Discord Rich Presence",
+    description = "Sends your in-game activity to the OmniPresence desktop app on this same "
+        + "computer (127.0.0.1 only) for Discord Rich Presence. No data leaves your machine; "
+        + "requires the OmniPresence app to be running.",
     tags = {"discord", "rich presence", "status", "activity"}
 )
 public class OmniPresencePlugin extends Plugin {
@@ -55,6 +56,12 @@ public class OmniPresencePlugin extends Plugin {
     // Varbit that tracks whether the bank interface is open.
     // Varbit 5570 = 1 when a bank/deposit box is open.
     private static final int VARBIT_BANK_OPEN = 5570;
+
+    // Endpoint is hard-locked to loopback — the host can never be changed, only
+    // the port. This guarantees the plugin can only ever talk to the OmniPresence
+    // app on this same machine, never a third-party server.
+    private static final String ENDPOINT_HOST = "http://127.0.0.1:";
+    private static final String ENDPOINT_PATH = "/integrations/runelite/context";
 
     @Inject
     private Client client;
@@ -64,6 +71,9 @@ public class OmniPresencePlugin extends Plugin {
 
     @Inject
     private OkHttpClient okHttpClient;
+
+    @Inject
+    private Gson gson;
 
     private ActivityInferencer inferencer;
     private ContextPublisher publisher;
@@ -86,9 +96,10 @@ public class OmniPresencePlugin extends Plugin {
 
     @Override
     protected void startUp() {
-        Gson gson = new GsonBuilder().serializeNulls().create();
+        // Derive from the client's injected Gson (Plugin Hub forbids fresh Gson instances).
+        Gson serializingGson = gson.newBuilder().serializeNulls().create();
         inferencer = new ActivityInferencer();
-        publisher = new ContextPublisher(okHttpClient, gson);
+        publisher = new ContextPublisher(okHttpClient, serializingGson);
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "omnipresence-scheduler");
             t.setDaemon(true);
@@ -245,6 +256,7 @@ public class OmniPresencePlugin extends Plugin {
 
         double minConfidence = config.minConfidencePercent() / 100.0;
 
-        publisher.publish(config.endpointUrl(), result, accountName, minConfidence);
+        String endpoint = ENDPOINT_HOST + config.port() + ENDPOINT_PATH;
+        publisher.publish(endpoint, result, accountName, minConfidence);
     }
 }
