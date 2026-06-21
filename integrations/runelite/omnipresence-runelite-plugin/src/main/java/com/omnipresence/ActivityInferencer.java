@@ -197,38 +197,40 @@ public class ActivityInferencer {
             return new InferenceResult("At the Grand Exchange", null, null, "Grand Exchange", 0.90);
         }
 
-        // 2. Boss check (NPC name drives this)
-        if (interactingNpcName != null && BOSS_NPCS.contains(interactingNpcName)) {
-            return new InferenceResult(
-                "Bossing",
-                interactingNpcName,
-                combatSkillFromAnimation(currentAnimation),
-                locationFromRegion(regionId),
-                0.93
-            );
-        }
-
-        // 3. Slayer (interacting with a known slayer monster + Slayer XP recently, or
-        //    interacting with a slayer NPC)
-        if (interactingNpcName != null && SLAYER_NPCS.contains(interactingNpcName)) {
-            boolean slayerXpRecent = recentXpSkillIndex == 18; // Slayer
-            double confidence = slayerXpRecent ? 0.95 : 0.82;
-            return new InferenceResult(
-                "Training Slayer",
-                interactingNpcName,
-                "Slayer",
-                locationFromRegion(regionId),
-                confidence
-            );
-        }
-
-        // 4. Combat (interacting with any NPC not in slayer/boss lists)
+        // 2-4. Combat — interacting with any NPC. We build a descriptive main line
+        //      "Slaying Tormented Demons" / "Fighting Zulrah" rather than a vague
+        //      "In Combat" / "Bossing", because the Discord rule only renders the
+        //      activity string. Slayer is detected by recent Slayer XP (the curated
+        //      SLAYER_NPCS list is incomplete — e.g. it misses Tormented Demons —
+        //      so the live XP signal is the source of truth, with the list as a
+        //      fallback). Bosses keep their singular proper name.
         if (interactingNpcName != null) {
-            String combatSkill = combatSkillFromXpOrAnimation(recentXpSkillIndex, currentAnimation);
+            final boolean isBoss      = BOSS_NPCS.contains(interactingNpcName);
+            final boolean slayerXp    = recentXpSkillIndex == 18; // Slayer
+            final boolean knownSlayer = SLAYER_NPCS.contains(interactingNpcName);
+
+            if (isBoss) {
+                return new InferenceResult(
+                    "Fighting " + interactingNpcName,
+                    interactingNpcName,
+                    combatSkillFromXpOrAnimation(recentXpSkillIndex, currentAnimation),
+                    locationFromRegion(regionId),
+                    0.93
+                );
+            }
+            if (slayerXp || knownSlayer) {
+                return new InferenceResult(
+                    "Slaying " + pluralize(interactingNpcName),
+                    interactingNpcName,
+                    "Slayer",
+                    locationFromRegion(regionId),
+                    slayerXp ? 0.95 : 0.82
+                );
+            }
             return new InferenceResult(
-                "In Combat",
+                "Fighting " + pluralize(interactingNpcName),
                 interactingNpcName,
-                combatSkill,
+                combatSkillFromXpOrAnimation(recentXpSkillIndex, currentAnimation),
                 locationFromRegion(regionId),
                 0.80
             );
@@ -275,8 +277,33 @@ public class ActivityInferencer {
             );
         }
 
-        // 7. Idle / unknown
-        return new InferenceResult("Idle", null, null, locationFromRegion(regionId), 0.50);
+        // 7. Idle / unknown. Confidence sits at/above the default 0.60 filter so an
+        //    idle reading is actually sent — otherwise a stale prior activity (e.g.
+        //    "Fighting …") lingers on Discord long after the player stopped.
+        return new InferenceResult("Idle", null, null, locationFromRegion(regionId), 0.60);
+    }
+
+    /**
+     * Naive English pluralisation for monster names (OSRS names pluralise with -s
+     * almost universally; -y → -ies; already-plural / awkward endings are left
+     * as-is). "Tormented Demon" → "Tormented Demons", "Fire Giant" → "Fire Giants".
+     */
+    static String pluralize(String name) {
+        if (name == null || name.isEmpty()) {
+            return name;
+        }
+        final String lower = name.toLowerCase();
+        if (lower.endsWith("s") || lower.endsWith("x") || lower.endsWith("z")
+                || lower.endsWith("sh") || lower.endsWith("ch")) {
+            return name; // already plural-ish or awkward to pluralise
+        }
+        if (lower.endsWith("y") && name.length() > 1) {
+            final char before = Character.toLowerCase(name.charAt(name.length() - 2));
+            if ("aeiou".indexOf(before) < 0) {
+                return name.substring(0, name.length() - 1) + "ies";
+            }
+        }
+        return name + "s";
     }
 
     // ---------------------------------------------------------------------------
@@ -303,7 +330,9 @@ public class ActivityInferencer {
             case REGION_TOB:                   return "Theatre of Blood";
             case REGION_COX:                   return "Chambers of Xeric";
             case REGION_NIGHTMARE:             return "Nightmare of Ashihama";
-            default:                           return regionId > 0 ? "Region " + regionId : null;
+            // Unmapped region → return null rather than a meaningless "Region 16453"
+            // number. The location line is then simply omitted.
+            default:                           return null;
         }
     }
 

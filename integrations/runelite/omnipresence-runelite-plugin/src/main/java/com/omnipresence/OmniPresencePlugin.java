@@ -3,6 +3,7 @@ package com.omnipresence;
 import com.google.gson.Gson;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.NPC;
@@ -91,6 +92,12 @@ public class OmniPresencePlugin extends Plugin {
     private volatile boolean bankOpen = false;
     private volatile boolean loggedIn = false;
 
+    /** Tick counter + last tick we saw an NPC interaction — used to decay the
+     *  interacting NPC a few ticks after combat ends (OSRS keeps "interacting"
+     *  set briefly after the last attack, and despawn/clear events are unreliable). */
+    private volatile int gameTickCount = 0;
+    private volatile int lastInteractTick = -100;
+
     /** Track last published context to avoid redundant POSTs. */
     private volatile String lastPublishedActivity = null;
 
@@ -142,11 +149,25 @@ public class OmniPresencePlugin extends Plugin {
 
     @Subscribe
     public void onGameTick(GameTick tick) {
+        gameTickCount++;
         // Refresh region on each tick (cheap; WorldPoint is a value object).
         Player local = client.getLocalPlayer();
         if (local != null) {
             WorldPoint wp = local.getWorldLocation();
-            currentRegionId = wp.getRegionID();
+            if (wp != null) {
+                currentRegionId = wp.getRegionID();
+            }
+            // Read the live interaction target each tick — more reliable than the
+            // InteractingChanged event, which often misses the "combat ended"
+            // transition. Decay ~5 ticks (~3s) after the last interaction so a
+            // finished fight stops showing "Fighting/Slaying …".
+            Actor target = local.getInteracting();
+            if (target instanceof NPC) {
+                interactingNpcName = ((NPC) target).getName();
+                lastInteractTick = gameTickCount;
+            } else if (gameTickCount - lastInteractTick > 5) {
+                interactingNpcName = null;
+            }
         }
     }
 
@@ -240,15 +261,18 @@ public class OmniPresencePlugin extends Plugin {
             loggedIn
         );
 
+        // Decay the recent XP signal EVERY cycle (before the debounce), so a stale
+        // reading can't keep a finished activity (e.g. "Training Ranged") alive
+        // while standing still. Active training re-arms it via StatChanged before
+        // the next poll.
+        recentXpSkillIndex = -1;
+
         // Debounce: skip if the derived activity hasn't meaningfully changed.
         if (result.getActivity().equals(lastPublishedActivity)
                 && result.getConfidence() < 0.99) {
             return;
         }
         lastPublishedActivity = result.getActivity();
-
-        // Decay the recent XP signal after each publish cycle.
-        recentXpSkillIndex = -1;
 
         String accountName = config.shareAccountName()
             ? (client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null)

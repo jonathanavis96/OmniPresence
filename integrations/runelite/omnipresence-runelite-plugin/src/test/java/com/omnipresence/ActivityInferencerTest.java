@@ -4,6 +4,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -36,7 +37,7 @@ public class ActivityInferencerTest {
             true                 // logged in
         );
 
-        assertEquals("Training Slayer", result.getActivity());
+        assertEquals("Slaying Skeletal Wyverns", result.getActivity());
         assertEquals("Skeletal Wyvern", result.getTarget());
         assertEquals("Slayer", result.getSkill());
         assertEquals("Asgarnian Ice Dungeon", result.getLocation());
@@ -54,7 +55,7 @@ public class ActivityInferencerTest {
             true
         );
 
-        assertEquals("Training Slayer", result.getActivity());
+        assertEquals("Slaying Abyssal Demons", result.getActivity());
         assertEquals("Abyssal Demon", result.getTarget());
         assertEquals("Slayer", result.getSkill());
         // Without Slayer XP confirmation, confidence should be lower than 0.90
@@ -77,7 +78,7 @@ public class ActivityInferencerTest {
             true
         );
 
-        assertEquals("Bossing", result.getActivity());
+        assertEquals("Fighting Zulrah", result.getActivity());
         assertEquals("Zulrah", result.getTarget());
         assertTrue(result.getConfidence() >= 0.90);
     }
@@ -175,8 +176,17 @@ public class ActivityInferencerTest {
     }
 
     @Test
-    public void locationFromRegion_unknownRegion_returnsRegionString() {
-        String loc = ActivityInferencer.locationFromRegion(9999);
-        assertEquals("Region 9999", loc);
+    public void locationFromRegion_unknownRegion_returnsNull() {
+        // Unmapped regions return null (location omitted) rather than a useless
+        // "Region 9999" number.
+        assertNull(ActivityInferencer.locationFromRegion(9999));
+    }
+
+    @Test
+    public void pluralize_handlesCommonMonsterNames() {
+        assertEquals("Tormented Demons", ActivityInferencer.pluralize("Tormented Demon"));
+        assertEquals("Fire Giants", ActivityInferencer.pluralize("Fire Giant"));
+        assertEquals("Harpie Bug Swarms", ActivityInferencer.pluralize("Harpie Bug Swarm"));
+        assertEquals("Elves", ActivityInferencer.pluralize("Elves")); // already plural
     }
 }
