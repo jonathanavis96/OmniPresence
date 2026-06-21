@@ -218,6 +218,12 @@ PresencePayload RuleEngine::resolveRule(const Rule&               rule,
         p.state   = {};
     }
 
+    // A matched rule's details line is the meaningful descriptor (e.g.
+    // "Training Slayer"), so surface it in the sidebar when present; otherwise
+    // fall back to showing the activity name.
+    p.statusDisplay = p.details.isEmpty() ? StatusDisplay::Name
+                                          : StatusDisplay::Details;
+
     // Timestamp resolution.
     switch (rule.timestampMode) {
         case TimestampMode::None:

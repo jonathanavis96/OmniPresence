@@ -8,6 +8,14 @@
 
 namespace OmniPresence {
 
+/// Which field Discord shows in the compact member-list / sidebar status.
+/// Mirrors discordpp::StatusDisplayTypes without depending on the SDK header.
+enum class StatusDisplay {
+    Name,     ///< Show the activity name, e.g. "Claude" (normal Discord behaviour).
+    State,    ///< Show the state line.
+    Details,  ///< Show the details line, e.g. "Training Slayer".
+};
+
 /// Fully-resolved Discord Rich Presence payload.
 struct PresencePayload {
     ActivityType activityType{ActivityType::Playing};
@@ -16,6 +24,9 @@ struct PresencePayload {
     QString name;           ///< Broad activity label shown on the profile card.
     QString details;        ///< "What I'm doing" line.
     QString state;          ///< Specific context line.
+
+    /// Which line Discord surfaces in the compact sidebar status.
+    StatusDisplay statusDisplay{StatusDisplay::Name};
     QString largeImageKey;
     QString largeImageText;
     QString smallImageKey;

@@ -280,9 +280,21 @@ void DiscordPresenceClient::sendPresenceNow() {
     if (!p.details.isEmpty()) activity.SetDetails(p.details.toStdString());
     if (!p.state.isEmpty())   activity.SetState(p.state.toStdString());
 
-    // Show the "details" line prominently in the member list / status, e.g.
-    // "Training Slayer" instead of "Playing Old School RuneScape".
-    activity.SetStatusDisplayType(discordpp::StatusDisplayTypes::Details);
+    // Choose what shows in the compact member-list / sidebar status. Rule-based
+    // presences opt into "Details" (e.g. "Training Slayer"); the generic app
+    // fallback uses "Name" so the sidebar reads "Claude", not "Active".
+    switch (p.statusDisplay) {
+        case StatusDisplay::Details:
+            activity.SetStatusDisplayType(discordpp::StatusDisplayTypes::Details);
+            break;
+        case StatusDisplay::State:
+            activity.SetStatusDisplayType(discordpp::StatusDisplayTypes::State);
+            break;
+        case StatusDisplay::Name:
+        default:
+            activity.SetStatusDisplayType(discordpp::StatusDisplayTypes::Name);
+            break;
+    }
 
     if (!p.largeImageKey.isEmpty() || !p.smallImageKey.isEmpty()) {
         discordpp::ActivityAssets assets;
