@@ -18,6 +18,21 @@ TemplateContext TemplateEngine::buildContext(const WindowInfo& window,
     ctx[QStringLiteral("app.name")]    = window.processName;
     ctx[QStringLiteral("window.title")]= window.windowTitle;
     ctx[QStringLiteral("process.name")]= window.processName;
+    // window.doctitle — the document/tab name only: the window title's first
+    // segment before a " - " / " — " / " | " / " · " separator, so e.g.
+    // "report.txt - Notepad" -> "report.txt" and
+    // "MyNote - MyVault - Obsidian v1.5" -> "MyNote". Falls back to the full
+    // title when there is no separator (e.g. Explorer's bare "Downloads").
+    {
+        const QString wt = window.windowTitle;
+        static const QRegularExpression sep(
+            QStringLiteral("\\s+[\\x{2013}\\x{2014}\\-|\\x{00B7}]\\s+"));
+        QString doc = wt.section(sep, 0, 0).trimmed();
+        if (doc.isEmpty()) doc = wt.trimmed();
+        // Drop a leading unsaved-changes marker (Notepad shows "*file.txt").
+        if (doc.startsWith(QLatin1Char('*'))) doc = doc.mid(1).trimmed();
+        ctx[QStringLiteral("window.doctitle")] = doc;
+    }
 
     // Browser
     ctx[QStringLiteral("browser.domain")]   = integrations.browserDomain();

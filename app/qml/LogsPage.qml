@@ -14,8 +14,13 @@ Page {
     property string coverageText: ""
 
     function refresh() {
-        eventsText   = AppController.presenceEventsLog()
-        coverageText = AppController.appCoverageLog()
+        // Only reassign when the text actually changed — reassigning on every
+        // tick forces the TextArea to relayout and snaps the scrollbar back to
+        // the top, which made the log impossible to scroll through.
+        var e = AppController.presenceEventsLog()
+        if (e !== eventsText) eventsText = e
+        var c = AppController.appCoverageLog()
+        if (c !== coverageText) coverageText = c
     }
 
     Component.onCompleted: refresh()
@@ -42,17 +47,19 @@ Page {
             text: "Presence timeline — what published, and why (RuneScape lines show the raw signal trail)."
             color: "#949ba4"; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true
         }
-        LogBox { Layout.fillWidth: true; Layout.preferredHeight: 0; Layout.fillHeight: true; logText: root.eventsText }
+        LogBox { Layout.fillWidth: true; Layout.preferredHeight: 0; Layout.fillHeight: true; Layout.preferredWidth: 3; logText: root.eventsText }
 
         // ── App coverage / icon backlog ───────────────────────────────────────
         Text {
-            text: "Icon backlog — every app you've focused and whether it resolved to an icon. 'NO ICON' = candidate for a custom rule."
+            text: "Icon backlog — every app you've focused and whether it resolved to an icon. 'NO ICON' = candidate for a custom rule. (Self-heals: once an app gets an icon its line flips to ICON ✓ next time it's focused.)"
             color: "#949ba4"; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true
         }
-        LogBox { Layout.fillWidth: true; Layout.preferredHeight: 160; logText: root.coverageText }
+        LogBox { Layout.fillWidth: true; Layout.preferredHeight: 220; logText: root.coverageText }
     }
 
     // ── Inline monospace, read-only, scrollable log box ───────────────────────
+    // Tail-follows: jumps to the newest line on update ONLY while you're parked
+    // at the bottom — scroll up and it leaves your position alone so you can read.
     component LogBox: Rectangle {
         property alias logText: ta.text
         radius: 8
@@ -60,8 +67,16 @@ Page {
         border.color: "#2b2d31"
 
         ScrollView {
+            id: sv
             anchors { fill: parent; margins: 8 }
             clip: true
+            property bool atBottom: true
+
+            function toBottom() {
+                var f = sv.contentItem
+                if (f) f.contentY = Math.max(0, f.contentHeight - f.height)
+            }
+
             TextArea {
                 id: ta
                 readOnly: true
@@ -71,6 +86,15 @@ Page {
                 font.pixelSize: 12
                 selectByMouse: true
                 background: Item {}
+                onTextChanged: if (sv.atBottom) Qt.callLater(sv.toBottom)
+            }
+
+            Connections {
+                target: sv.contentItem
+                function onContentYChanged() {
+                    var f = sv.contentItem
+                    sv.atBottom = (f.contentY >= f.contentHeight - f.height - 4)
+                }
             }
         }
     }

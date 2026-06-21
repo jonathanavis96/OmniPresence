@@ -17,7 +17,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <QMutex>
-#include <QSet>
+#include <QHash>
 
 namespace OmniPresence {
 
@@ -294,12 +294,18 @@ void AppController::logPresenceEvent(const PresencePayload& p) {
 }
 
 void AppController::logAppCoverage(const PresencePayload& p) {
-    // One line per distinct foreground app, ever. Unlike presence-events.log this
-    // is NOT truncated per launch — it accumulates the full list of apps the user
-    // has focused, flagged by whether they resolved to an icon. The seen-set is
-    // primed from the existing file so each app is recorded once across sessions.
+    // One line per distinct foreground app. Unlike presence-events.log this is
+    // NOT truncated per launch — it accumulates every app the user has focused,
+    // flagged by whether it resolved to an icon. Each app's line is UPGRADED in
+    // place when its status changes: if you later add an icon rule for an app,
+    // the next time it's focused its "NO ICON / no rule" line flips to
+    // "ICON ✓ / rule: …" rather than lying forever (the old behaviour recorded
+    // each app once and never refreshed, so e.g. Discord/java kept showing
+    // "NO ICON" long after a rule was added).
     const QString app = m_currentWindow.processName;
     if (app.isEmpty()) return;
+
+    struct CovEntry { QString time; QString status; QString note; };
 
     static QMutex mutex;
     static const QString path = [] {
@@ -309,36 +315,52 @@ void AppController::logAppCoverage(const PresencePayload& p) {
         QDir().mkpath(dir);
         return dir + QStringLiteral("/app-coverage.log");
     }();
-    static QSet<QString> seen = [] {
-        QSet<QString> s;
+    // Insertion-ordered store primed from the existing file (preserves the
+    // original first-seen order on rewrite).
+    static QStringList order;
+    static QHash<QString, CovEntry> entries = [] {
+        QHash<QString, CovEntry> m;
         QFile f(path);
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QTextStream in(&f);
             while (!in.atEnd()) {
-                // Format: "yyyy-MM-dd HH:mm\tAPP\t...". App is the 2nd tab field.
                 const QStringList cols = in.readLine().split(QLatin1Char('\t'));
-                if (cols.size() >= 2) s.insert(cols.at(1).trimmed());
+                if (cols.size() < 2) continue;
+                const QString a = cols.at(1).trimmed();
+                if (!m.contains(a)) order.append(a);
+                m.insert(a, CovEntry{
+                    cols.value(0).trimmed(),
+                    cols.value(2).trimmed(),
+                    cols.value(3).trimmed() });
             }
         }
-        return s;
+        return m;
     }();
 
-    QMutexLocker lock(&mutex);
-    if (seen.contains(app)) return;
-    seen.insert(app);
-
     const bool hasIcon = !p.largeImageKey.isEmpty();
-    const QString note = p.matchedRuleName.isEmpty()
+    const QString status = hasIcon ? QStringLiteral("ICON ✓") : QStringLiteral("NO ICON");
+    const QString note   = p.matchedRuleName.isEmpty()
         ? QStringLiteral("(generic — no rule)")
         : QStringLiteral("rule: %1").arg(p.matchedRuleName);
 
+    QMutexLocker lock(&mutex);
+    const auto it = entries.constFind(app);
+    if (it != entries.constEnd() && it->status == status && it->note == note)
+        return;  // unchanged — nothing to write
+
+    if (it == entries.constEnd()) order.append(app);
+    entries.insert(app, CovEntry{
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")),
+        status, note });
+
+    // Rewrite the whole file (bounded by the number of distinct apps focused).
     QFile fh(path);
-    if (fh.open(QIODevice::Append | QIODevice::Text)) {
+    if (fh.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
         QTextStream out(&fh);
-        out << QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))
-            << '\t' << app
-            << '\t' << (hasIcon ? QStringLiteral("ICON ✓") : QStringLiteral("NO ICON"))
-            << '\t' << note << '\n';
+        for (const QString& a : order) {
+            const CovEntry& e = entries[a];
+            out << e.time << '\t' << a << '\t' << e.status << '\t' << e.note << '\n';
+        }
     }
 }
 

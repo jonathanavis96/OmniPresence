@@ -173,12 +173,16 @@ Page {
                         textRole: "label"
                         valueRole: "token"
                         model: [
-                            { label: "Show name from URL", token: "{{browser.label}}" },
-                            { label: "Page / video title", token: "{{browser.title}}" },
-                            { label: "Site name",          token: "{{browser.site}}" },
-                            { label: "Window / tab title", token: "{{window.title}}" },
-                            { label: "RuneScape activity", token: "{{runelite.activity}}" },
-                            { label: "Nothing extra",      token: "" }
+                            { label: "Show name from URL",      token: "{{browser.label}}" },
+                            { label: "Page / video title",      token: "{{browser.title}}" },
+                            { label: "Site name",               token: "{{browser.site}}" },
+                            { label: "Window / tab title",      token: "{{window.title}}" },
+                            { label: "Document / tab name only", token: "{{window.doctitle}}" },
+                            { label: "RuneScape activity",      token: "{{runelite.activity}}" },
+                            { label: "RuneScape target / NPC",  token: "{{runelite.target}}" },
+                            { label: "RuneScape skill",         token: "{{runelite.skill}}" },
+                            { label: "RuneScape location",      token: "{{runelite.location}}" },
+                            { label: "Nothing extra",           token: "" }
                         ]
                         onActivated: parent.build()
                     }
