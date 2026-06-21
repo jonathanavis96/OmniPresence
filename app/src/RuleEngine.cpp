@@ -22,7 +22,10 @@ PresencePayload RuleEngine::privateFallback() {
     p.name              = QStringLiteral("Computer");
     p.details           = QStringLiteral("Working privately");
     p.state             = QStringLiteral("Private");
-    p.activityType      = ActivityType::Custom;
+    // Must be Playing — Discord Rich Presence rejects the Custom/CustomStatus
+    // activity type ("Field type: Invalid enum value"); custom status is a
+    // separate Discord feature that UpdateRichPresence cannot set.
+    p.activityType      = ActivityType::Playing;
     p.privacyLevel      = PrivacyLevel::Private;
     p.isPrivateFallback = true;
     p.matchedRuleName   = QStringLiteral("(private fallback)");

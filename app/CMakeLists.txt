@@ -51,6 +51,10 @@ if(WIN32)
     list(APPEND OMNIPRESENCE_SOURCES
         src/Win32ActiveWindowWatcher.cpp
         include/Win32ActiveWindowWatcher.h)
+    # Application icon: the .rc compiles app.ico into the exe so Explorer, the
+    # taskbar, and desktop shortcuts all show the OmniPresence icon.
+    list(APPEND OMNIPRESENCE_SOURCES
+        resources/app.rc)
 endif()
 
 # ── Executable ────────────────────────────────────────────────────────────────

@@ -1,0 +1,4 @@
+// Windows application icon resource.
+// The lowest-numbered ICON resource is used by Explorer/shortcuts for the EXE,
+// so IDI_ICON1 here becomes the omnipresence.exe icon automatically.
+IDI_ICON1 ICON "app.ico"

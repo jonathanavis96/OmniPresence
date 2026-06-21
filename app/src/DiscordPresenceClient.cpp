@@ -58,6 +58,26 @@ void DiscordPresenceClient::connectToDiscord(const QString& appId) {
 
     m_client = std::make_shared<discordpp::Client>();
 
+    // Surface the SDK's own diagnostics so a stuck auth flow (no browser/overlay)
+    // is observable instead of silently spinning on "Connecting".
+    m_client->AddLogCallback(
+        [](std::string message, discordpp::LoggingSeverity severity) {
+            qDebug().noquote() << "[discordpp]" << discordpp::EnumToString(severity)
+                               << QString::fromStdString(message);
+        },
+        discordpp::LoggingSeverity::Verbose);
+    {
+        const QString logDir =
+            QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+        if (!logDir.isEmpty()) {
+            QDir().mkpath(logDir);
+            m_client->SetLogDir(logDir.toStdString(), discordpp::LoggingSeverity::Info);
+        }
+    }
+    // Identify the application before the OAuth flow (Connect sets this
+    // automatically later, but Authorize happens before any Connect).
+    m_client->SetApplicationId(m_appIdNum);
+
     m_client->SetStatusChangedCallback(
         [this](discordpp::Client::Status status,
                discordpp::Client::Error error,
@@ -132,17 +152,25 @@ void DiscordPresenceClient::beginAuthorization() {
     args.SetScopes(discordpp::Client::GetDefaultPresenceScopes());
     args.SetCodeChallenge(verifier.Challenge());
 
+    qDebug() << "[DiscordPresenceClient] Authorize() called for app" << m_appId
+             << "— a browser tab or Discord prompt should open now.";
+
     // `verifier` must survive until GetToken — capture a copy by value.
     m_client->Authorize(
         args,
         [this, verifier](discordpp::ClientResult result,
                          std::string code,
                          std::string redirectUri) {
+            qDebug() << "[DiscordPresenceClient] Authorize callback fired. success="
+                     << result.Successful()
+                     << "detail=" << QString::fromStdString(result.ToString());
             if (!result.Successful()) {
-                qWarning() << "[DiscordPresenceClient] Authorize failed.";
+                qWarning() << "[DiscordPresenceClient] Authorize failed:"
+                           << QString::fromStdString(result.ToString());
                 m_status = DiscordConnectionStatus::Error;
                 emit connectionStatusChanged(m_status);
-                emit sdkError(QStringLiteral("Discord authorization failed or was cancelled."));
+                emit sdkError(QStringLiteral("Discord authorization failed: %1")
+                                  .arg(QString::fromStdString(result.ToString())));
                 return;
             }
             m_client->GetToken(
@@ -222,7 +250,10 @@ discordpp::ActivityTypes toSdkActivityType(ActivityType t) {
     case ActivityType::Listening: return discordpp::ActivityTypes::Listening;
     case ActivityType::Watching:  return discordpp::ActivityTypes::Watching;
     case ActivityType::Competing: return discordpp::ActivityTypes::Competing;
-    case ActivityType::Custom:    return discordpp::ActivityTypes::CustomStatus;
+    // Custom/CustomStatus is NOT a valid Rich Presence type — Discord rejects it
+    // with "Field type: Invalid enum value". Fall back to Playing so the presence
+    // still publishes (custom status can't be set via UpdateRichPresence anyway).
+    case ActivityType::Custom:    return discordpp::ActivityTypes::Playing;
     }
     return discordpp::ActivityTypes::Playing;
 }
@@ -265,8 +296,9 @@ void DiscordPresenceClient::sendPresenceNow() {
                 emit presenceUpdated(p);
             } else {
                 qWarning() << "[DiscordPresenceClient] UpdateRichPresence failed for"
-                           << p.name;
-                emit sdkError(QStringLiteral("Failed to publish Rich Presence."));
+                           << p.name << "—" << QString::fromStdString(result.ToString());
+                emit sdkError(QStringLiteral("Failed to publish Rich Presence: %1")
+                                  .arg(QString::fromStdString(result.ToString())));
             }
         });
 }
