@@ -31,3 +31,15 @@ add_executable(test_config_assets
 target_include_directories(test_config_assets PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
 target_link_libraries(test_config_assets PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME test_config_assets COMMAND test_config_assets)
+
+add_executable(test_rule_engine_render
+    test_rule_engine_render.cpp
+    ${OMNI_TEST_SRC}/RuleEngine.cpp
+    ${OMNI_TEST_SRC}/TemplateEngine.cpp
+    ${OMNI_TEST_SRC}/IntegrationContext.cpp
+    ${OMNI_TEST_SRC}/Rule.cpp
+    ${OMNI_TEST_SRC}/PresencePayload.cpp
+)
+target_include_directories(test_rule_engine_render PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
+target_link_libraries(test_rule_engine_render PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME test_rule_engine_render COMMAND test_rule_engine_render)

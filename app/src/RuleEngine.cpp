@@ -218,11 +218,10 @@ PresencePayload RuleEngine::resolveRule(const Rule&               rule,
         p.state   = {};
     }
 
-    // A matched rule's details line is the meaningful descriptor (e.g.
-    // "Training Slayer"), so surface it in the sidebar when present; otherwise
-    // fall back to showing the activity name.
-    p.statusDisplay = p.details.isEmpty() ? StatusDisplay::Name
-                                          : StatusDisplay::Details;
+    // The activity name IS the main line the user controls (e.g.
+    // "RuneLight – Training Crafting"), so the compact member-list status always
+    // shows Name. Details/state fill the expanded profile card + side panel.
+    p.statusDisplay = StatusDisplay::Name;
 
     // Timestamp resolution.
     switch (rule.timestampMode) {
