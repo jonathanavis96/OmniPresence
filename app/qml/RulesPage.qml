@@ -63,6 +63,78 @@ Page {
         }
     }
 
+    Popup {
+        id: genPopup
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: 320
+        padding: 16
+        property string accent: "#22d3ee"
+        background: Rectangle { radius: 8; color: "#2b2d31"; border.color: "#1e1f22" }
+
+        onOpened: monoField.text = (root.current.name || "").substring(0, 2).toUpperCase()
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Text { text: "Generate image"; color: "#dbdee1"; font.pixelSize: 15; font.bold: true }
+
+            Text { text: "Monogram"; color: "#949ba4"; font.pixelSize: 11 }
+            TextField {
+                id: monoField
+                Layout.fillWidth: true
+                maximumLength: 3
+                color: "#dbdee1"
+                background: Rectangle { radius: 4; color: "#1e1f22" }
+            }
+
+            Text { text: "Colour"; color: "#949ba4"; font.pixelSize: 11 }
+            RowLayout {
+                spacing: 8
+                Repeater {
+                    model: ["#22d3ee", "#ff4444", "#23a55a", "#faa81a", "#5865f2", "#eb459e"]
+                    delegate: Rectangle {
+                        required property string modelData
+                        width: 32; height: 32; radius: 6; color: modelData
+                        border.width: genPopup.accent === modelData ? 3 : 0
+                        border.color: "#ffffff"
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: genPopup.accent = parent.modelData }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Cancel"
+                    onClicked: genPopup.close()
+                    background: Item {}
+                    contentItem: Text { text: parent.text; color: "#949ba4"; horizontalAlignment: Text.AlignHCenter }
+                }
+                Button {
+                    text: "Create"
+                    onClicked: {
+                        var key = AppController.generateArt(root.selectedIndex, monoField.text, genPopup.accent)
+                        if (key !== "") {
+                            root.loadCurrent()
+                            uploadHint.text = "Generated \"" + key + "\". Drop the file Explorer just "
+                                + "revealed into the Art Assets page that opened, then Save."
+                            uploadHint.visible = true
+                        }
+                        genPopup.close()
+                    }
+                    background: Rectangle { radius: 6; color: parent.hovered ? "#4752c4" : "#5865f2" }
+                    contentItem: Text { text: parent.text; color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    implicitWidth: 90; implicitHeight: 32
+                }
+            }
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
@@ -150,6 +222,17 @@ Page {
 
                 Text { text: "Edit Rule"; color: "#dbdee1"; font.pixelSize: 18; font.bold: true }
 
+                // 0 — Rule name (what you call this rule)
+                Label2 { text: "Rule name" }
+                TextField {
+                    Layout.fillWidth: true
+                    text: root.current.name || ""
+                    placeholderText: "e.g. RuneScape, Coding, YouTube"
+                    onTextEdited: root.setField("name", text)
+                    color: "#dbdee1"
+                    background: Rectangle { radius: 4; color: "#1e1f22" }
+                }
+
                 // 1 — Main line
                 Label2 { text: "Main line (what Discord shows)" }
                 TextField {
@@ -170,7 +253,7 @@ Page {
                     }
                     Text {
                         text: ((root.current.privacyLevel || 0) === 2)
-                              ? "Private — this window shows the private placeholder"
+                              ? "Private — this window will not show its details"
                               : "Public — this window shows its details"
                         color: "#dbdee1"; font.pixelSize: 13
                         verticalAlignment: Text.AlignVCenter
@@ -233,6 +316,13 @@ Page {
                         contentItem: Text { text: parent.text; color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         implicitHeight: 34; implicitWidth: 110
                     }
+                    Button {
+                        text: "Generate"
+                        onClicked: genPopup.open()
+                        background: Rectangle { radius: 6; color: parent.hovered ? "#3a3d44" : "#2b2d31"; border.color: "#5865f2"; border.width: 1 }
+                        contentItem: Text { text: parent.text; color: "#dbdee1"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                        implicitHeight: 34; implicitWidth: 96
+                    }
                 }
                 Text {
                     id: uploadHint
@@ -255,7 +345,6 @@ Page {
                     Layout.fillWidth: true
                     spacing: 10
 
-                    AdvRow { label: "Name (internal)";   value: root.current.name || "";                 onCommit: root.setField("name", v) }
                     AdvRow { label: "Priority";          value: String(root.current.priority || 100);    isNum: true; onCommit: root.setField("priority", parseInt(v)) }
                     AdvRow { label: "Process name";      value: root.current.matchProcessName || "";     onCommit: root.setField("matchProcessName", v) }
                     AdvRow { label: "Executable path";   value: root.current.matchExecutablePath || "";  onCommit: root.setField("matchExecutablePath", v) }
