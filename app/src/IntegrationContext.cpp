@@ -55,6 +55,7 @@ void IntegrationContext::clearAll() {
 
 QString IntegrationContext::browserDomain()          const { return FRESH_FIELD("browser", "domain");           }
 QString IntegrationContext::browserCategory()        const { return FRESH_FIELD("browser", "category");         }
+QString IntegrationContext::browserTitle()           const { return FRESH_FIELD("browser", "safe_title");       }
 QString IntegrationContext::terminalCwd()            const { return FRESH_FIELD("terminal", "cwd");             }
 QString IntegrationContext::terminalRepo()           const { return FRESH_FIELD("terminal", "repo");            }
 QString IntegrationContext::terminalCommandSummary() const { return FRESH_FIELD("terminal", "command_summary"); }

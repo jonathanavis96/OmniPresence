@@ -17,6 +17,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <QMutex>
+#include <QSet>
 
 namespace OmniPresence {
 
@@ -214,6 +215,11 @@ void AppController::evaluateAndPublish() {
     m_currentPresence = candidate;
     emit presenceChanged();
 
+    // Icon-backlog discovery: record every distinct foreground app (even when
+    // the presence itself did not change) so we can see which apps still lack
+    // a custom icon. Cheap — dedups internally.
+    logAppCoverage(candidate);
+
     // Skip the Discord API call if nothing changed.
     if (candidate.isSamePresence(m_lastPublishedPresence)) return;
 
@@ -273,6 +279,55 @@ void AppController::logPresenceEvent(const PresencePayload& p) {
         QTextStream out(&fh);
         out << QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))
             << "  " << main << "   <- " << why << '\n';
+    }
+}
+
+void AppController::logAppCoverage(const PresencePayload& p) {
+    // One line per distinct foreground app, ever. Unlike presence-events.log this
+    // is NOT truncated per launch — it accumulates the full list of apps the user
+    // has focused, flagged by whether they resolved to an icon. The seen-set is
+    // primed from the existing file so each app is recorded once across sessions.
+    const QString app = m_currentWindow.processName;
+    if (app.isEmpty()) return;
+
+    static QMutex mutex;
+    static const QString path = [] {
+        QString base = qEnvironmentVariable("LOCALAPPDATA");
+        if (base.isEmpty()) base = QDir::tempPath();
+        const QString dir = base + QStringLiteral("/OmniPresence");
+        QDir().mkpath(dir);
+        return dir + QStringLiteral("/app-coverage.log");
+    }();
+    static QSet<QString> seen = [] {
+        QSet<QString> s;
+        QFile f(path);
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&f);
+            while (!in.atEnd()) {
+                // Format: "yyyy-MM-dd HH:mm\tAPP\t...". App is the 2nd tab field.
+                const QStringList cols = in.readLine().split(QLatin1Char('\t'));
+                if (cols.size() >= 2) s.insert(cols.at(1).trimmed());
+            }
+        }
+        return s;
+    }();
+
+    QMutexLocker lock(&mutex);
+    if (seen.contains(app)) return;
+    seen.insert(app);
+
+    const bool hasIcon = !p.largeImageKey.isEmpty();
+    const QString note = p.matchedRuleName.isEmpty()
+        ? QStringLiteral("(generic — no rule)")
+        : QStringLiteral("rule: %1").arg(p.matchedRuleName);
+
+    QFile fh(path);
+    if (fh.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&fh);
+        out << QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))
+            << '\t' << app
+            << '\t' << (hasIcon ? QStringLiteral("ICON ✓") : QStringLiteral("NO ICON"))
+            << '\t' << note << '\n';
     }
 }
 

@@ -71,8 +71,14 @@ function buildPayload(tab, state) {
 
   // Title allowance: check whitelist
   const titleAllowed = Boolean(state.whitelist[domain] || state.whitelist[hostname]);
-  const rawTitle = (tab.title || "").trim();
-  const safeTitle = titleAllowed && rawTitle ? rawTitle : null;
+  // Strip browser noise: leading unread-count "(179) " and a trailing
+  // " - YouTube" site suffix, so the presence shows just the page/video title.
+  const cleanTitle = (tab.title || "")
+    .trim()
+    .replace(/^\(\d+\+?\)\s*/, "")
+    .replace(/\s+[-–]\s+YouTube$/i, "")
+    .trim();
+  const safeTitle = titleAllowed && cleanTitle ? cleanTitle : null;
 
   const browser = detectBrowser();
 

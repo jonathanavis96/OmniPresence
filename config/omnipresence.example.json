@@ -12,15 +12,7 @@
     "allowChatGptTitles": false,
     "whitelistDomains": []
   },
-  "assets": {
-    "osrs": "osrs",
-    "code": "code",
-    "terminal": "terminal",
-    "youtube": "youtube",
-    "reddit": "reddit",
-    "pihole": "pihole",
-    "dashboard": "dashboard"
-  },
+  "assets": {},
   "rules": [
     {
       "enabled": true,
@@ -33,15 +25,16 @@
       "matchBrowserCategory": "",
       "matchIntegrationSource": "runelite",
       "activityType": "Playing",
-      "activityNameTemplate": "RuneLight – {{runelite.activity}}",
+      "activityNameTemplate": "{{runelite.activity}}",
       "detailsTemplate": "",
       "stateTemplate": "{{runelite.location}}",
-      "largeImageKey": "osrs",
+      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/osrs.png?v=2",
       "largeImageText": "Old School RuneScape",
       "smallImageKey": "",
       "smallImageText": "",
       "timestampMode": "CategoryChange",
-      "privacyLevel": "Public"
+      "privacyLevel": "Public",
+      "name": "RuneLite / OSRS"
     },
     {
       "enabled": true,
@@ -54,15 +47,16 @@
       "matchBrowserCategory": "",
       "matchIntegrationSource": "terminal",
       "activityType": "Playing",
-      "activityNameTemplate": "Coding – {{terminal.title or window.title}}",
-      "detailsTemplate": "Working on {{terminal.repo or vscode.workspace or window.title}}",
+      "activityNameTemplate": "Code \u2013 {{terminal.repo or terminal.cwd or window.title}}",
+      "detailsTemplate": "Working on {{terminal.repo or vscode.workspace}}",
       "stateTemplate": "{{terminal.command_summary or vscode.current_task}}",
-      "largeImageKey": "code",
+      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/terminal.png",
       "largeImageText": "Coding",
       "smallImageKey": "",
       "smallImageText": "",
       "timestampMode": "CategoryChange",
-      "privacyLevel": "Public"
+      "privacyLevel": "Public",
+      "name": "Windows Terminal"
     },
     {
       "enabled": true,
@@ -75,15 +69,16 @@
       "matchBrowserCategory": "",
       "matchIntegrationSource": "browser",
       "activityType": "Watching",
-      "activityNameTemplate": "YouTube",
+      "activityNameTemplate": "YouTube \u2013 {{browser.title}}",
       "detailsTemplate": "Watching YouTube",
       "stateTemplate": "Private",
-      "largeImageKey": "youtube",
+      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/youtube.png",
       "largeImageText": "YouTube",
       "smallImageKey": "",
       "smallImageText": "",
       "timestampMode": "StartNow",
-      "privacyLevel": "DomainOnly"
+      "privacyLevel": "DomainOnly",
+      "name": "YouTube"
     },
     {
       "enabled": true,
@@ -99,12 +94,13 @@
       "activityNameTemplate": "Reddit",
       "detailsTemplate": "Browsing Reddit",
       "stateTemplate": "Private",
-      "largeImageKey": "reddit",
+      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/reddit.png",
       "largeImageText": "Reddit",
       "smallImageKey": "",
       "smallImageText": "",
       "timestampMode": "StartNow",
-      "privacyLevel": "DomainOnly"
+      "privacyLevel": "DomainOnly",
+      "name": "Reddit"
     },
     {
       "enabled": true,
@@ -120,12 +116,57 @@
       "activityNameTemplate": "Custom Dashboard",
       "detailsTemplate": "Checking Pi-hole",
       "stateTemplate": "Network monitoring",
-      "largeImageKey": "pihole",
+      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/pihole.png",
       "largeImageText": "Pi-hole Dashboard",
       "smallImageKey": "",
       "smallImageText": "",
       "timestampMode": "StartNow",
-      "privacyLevel": "DomainOnly"
+      "privacyLevel": "DomainOnly",
+      "name": "Custom Dashboard"
+    },
+    {
+      "enabled": true,
+      "priority": 15,
+      "matchProcessName": "claude.exe",
+      "matchExecutablePath": "",
+      "matchWindowTitleContains": "",
+      "matchWindowTitleRegex": "",
+      "matchBrowserDomain": "",
+      "matchBrowserCategory": "",
+      "matchIntegrationSource": "",
+      "activityType": "Playing",
+      "activityNameTemplate": "Claude",
+      "detailsTemplate": "Active",
+      "stateTemplate": "",
+      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/claude.png",
+      "largeImageText": "Claude",
+      "smallImageKey": "",
+      "smallImageText": "",
+      "timestampMode": "StartNow",
+      "privacyLevel": "Public",
+      "name": "Claude"
+    },
+    {
+      "enabled": true,
+      "priority": 90,
+      "name": "Chrome (generic)",
+      "matchProcessName": "chrome.exe",
+      "matchExecutablePath": "",
+      "matchWindowTitleContains": "",
+      "matchWindowTitleRegex": "",
+      "matchBrowserDomain": "",
+      "matchBrowserCategory": "",
+      "matchIntegrationSource": "",
+      "activityType": "Playing",
+      "activityNameTemplate": "Browsing the internet",
+      "detailsTemplate": "",
+      "stateTemplate": "",
+      "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/chrome.png",
+      "largeImageText": "Google Chrome",
+      "smallImageKey": "",
+      "smallImageText": "",
+      "timestampMode": "StartNow",
+      "privacyLevel": "Public"
     }
   ]
 }

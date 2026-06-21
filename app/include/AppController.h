@@ -156,6 +156,11 @@ private:
     /// "clean window" used to spot misfires and tune the inferencer.
     void logPresenceEvent(const PresencePayload& payload);
 
+    /// Record each distinct foreground app to app-coverage.log (append-only,
+    /// deduped across sessions) noting whether it resolved to an icon/rule.
+    /// Builds the backlog of apps that still need a custom icon.
+    void logAppCoverage(const PresencePayload& payload);
+
     QString sourceForKey(const QString& key) const;
     /// Persist a freshly-stored art key onto a rule, then open portal + reveal file.
     QString finishArtImport(int ruleIndex, const QString& key, const QString& outPath);

@@ -22,6 +22,7 @@ TemplateContext TemplateEngine::buildContext(const WindowInfo& window,
     // Browser
     ctx[QStringLiteral("browser.domain")]   = integrations.browserDomain();
     ctx[QStringLiteral("browser.category")] = integrations.browserCategory();
+    ctx[QStringLiteral("browser.title")]    = integrations.browserTitle();
 
     // Terminal
     ctx[QStringLiteral("terminal.cwd")]             = integrations.terminalCwd();
