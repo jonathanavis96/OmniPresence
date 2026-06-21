@@ -125,8 +125,11 @@ public:
     Q_INVOKABLE QString      generateArt(int ruleIndex, const QString& monogram, const QString& accentHex);
     /// Art keys available to pick from (bundled defaults + user-added photos).
     Q_INVOKABLE QStringList  artKeys() const;
-    /// Preview source ("file://"/"qrc:") for an arbitrary art key (for thumbnails).
+    /// Preview source (URL/"file://"/"qrc:") for an art key or icon URL (thumbnails).
     Q_INVOKABLE QString      artSourceForKey(const QString& key) const { return sourceForKey(key); }
+    /// Render a {{template}} against the current live context — for the rule
+    /// editor's live "what Discord will show" preview.
+    Q_INVOKABLE QString      previewTemplate(const QString& tmpl) const;
 
     // Accessors for the tray menu (non-QML)
     ConfigStore*           configStore()    const noexcept { return m_configStore.get(); }

@@ -437,9 +437,18 @@ void AppController::reloadConfig() {
 
 QString AppController::sourceForKey(const QString& key) const {
     if (key.isEmpty()) return {};
+    // URL icons (the current workflow) resolve to themselves — QML Image loads
+    // them directly, and so does Discord. Legacy asset keys still fall back to a
+    // bundled/local resource for backward compatibility.
+    if (key.startsWith(QLatin1String("http://")) || key.startsWith(QLatin1String("https://")))
+        return key;
     const QString local = m_artStore.localPathForKey(key);
     if (!local.isEmpty()) return QUrl::fromLocalFile(local).toString();
     return QStringLiteral("qrc:/OmniPresence/resources/assets/") + key + QStringLiteral(".png");
+}
+
+QString AppController::previewTemplate(const QString& tmpl) const {
+    return TemplateEngine::render(tmpl, m_currentWindow, m_integrationContext);
 }
 
 QStringList AppController::artKeys() const {
@@ -457,6 +466,9 @@ QVariantList AppController::availableContextFields() const {
     const TemplateContext ctx = TemplateEngine::buildContext(m_currentWindow, m_integrationContext);
     static const QVector<QPair<QString, QString>> known = {
         {QStringLiteral("window.title"),      QStringLiteral("The window / tab title")},
+        {QStringLiteral("browser.label"),     QStringLiteral("Show name from URL")},
+        {QStringLiteral("browser.title"),     QStringLiteral("Page / video title")},
+        {QStringLiteral("browser.site"),      QStringLiteral("Site name")},
         {QStringLiteral("browser.domain"),    QStringLiteral("The website domain")},
         {QStringLiteral("runelite.activity"), QStringLiteral("RuneScape activity")},
         {QStringLiteral("runelite.location"), QStringLiteral("RuneScape location")},
