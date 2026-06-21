@@ -50,6 +50,7 @@ public:
     [[nodiscard]] QString browserDomain()       const;
     [[nodiscard]] QString browserCategory()     const;
     [[nodiscard]] QString browserTitle()        const;  ///< Whitelisted tab title (safe_title), else empty.
+    [[nodiscard]] QString browserLabel()        const;  ///< Smart label from the URL path (page_label), else empty.
     [[nodiscard]] QString terminalCwd()         const;
     [[nodiscard]] QString terminalRepo()        const;
     [[nodiscard]] QString terminalCommandSummary() const;

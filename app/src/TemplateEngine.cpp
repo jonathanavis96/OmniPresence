@@ -23,6 +23,14 @@ TemplateContext TemplateEngine::buildContext(const WindowInfo& window,
     ctx[QStringLiteral("browser.domain")]   = integrations.browserDomain();
     ctx[QStringLiteral("browser.category")] = integrations.browserCategory();
     ctx[QStringLiteral("browser.title")]    = integrations.browserTitle();
+    ctx[QStringLiteral("browser.label")]    = integrations.browserLabel();
+    // browser.site — the site's name from its domain (dotabuff.com -> "Dotabuff").
+    {
+        const QString dom = integrations.browserDomain();
+        QString site = dom.section(QLatin1Char('.'), 0, 0);  // first label
+        if (!site.isEmpty()) site[0] = site[0].toUpper();
+        ctx[QStringLiteral("browser.site")] = site;
+    }
 
     // Terminal
     ctx[QStringLiteral("terminal.cwd")]             = integrations.terminalCwd();

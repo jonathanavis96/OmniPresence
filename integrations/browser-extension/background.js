@@ -80,6 +80,12 @@ function buildPayload(tab, state) {
     .trim();
   const safeTitle = titleAllowed && cleanTitle ? cleanTitle : null;
 
+  // Smart label: a clean human name derived from the URL path (e.g.
+  // /wtv/21760/Severance -> "Severance", /the-office -> "The Office"), so rules
+  // can say "Watching {{browser.label}}" without the user touching the title.
+  // Falls back to the cleaned title. Gated by the same whitelist as titles.
+  const pageLabel = titleAllowed ? (labelFromUrl(url) || cleanTitle || null) : null;
+
   const browser = detectBrowser();
 
   return {
@@ -89,8 +95,34 @@ function buildPayload(tab, state) {
     category,
     title_allowed: titleAllowed,
     safe_title: safeTitle,
+    page_label: pageLabel,
     dashboard_label: dashboardLabel,
   };
+}
+
+/**
+ * Derive a human-readable label from a URL's path — the last meaningful
+ * segment, decoded, with separators turned to spaces and title-cased.
+ * Skips numeric ids and hash-like segments. Returns null if nothing usable.
+ * @param {URL} url
+ * @returns {string|null}
+ */
+function labelFromUrl(url) {
+  try {
+    const segs = url.pathname.split("/").filter(Boolean);
+    for (let i = segs.length - 1; i >= 0; i--) {
+      let s = decodeURIComponent(segs[i]).replace(/\.[a-z0-9]{1,5}$/i, ""); // drop file ext
+      if (/^\d+$/.test(s)) continue;            // pure numeric id
+      if (/^[0-9a-f]{8,}$/i.test(s)) continue;  // hash / long id
+      s = s.replace(/[-_+]+/g, " ").trim();
+      if (s.length >= 2) {
+        return s.replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+    }
+  } catch {
+    // malformed URL — ignore
+  }
+  return null;
 }
 
 // ─── POST ─────────────────────────────────────────────────────────────────────
