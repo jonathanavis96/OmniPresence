@@ -5,6 +5,10 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QRegularExpression>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPen>
+#include <QFont>
 
 namespace OmniPresence {
 
@@ -50,6 +54,39 @@ bool ArtStore::importImage(const QString& srcPath, const QString& key,
         return false;
     }
     if (outPath) *outPath = p;
+    return true;
+}
+
+bool ArtStore::renderMonogram(const QString& outPath, const QString& monogram,
+                              const QColor& accent, QString* err) {
+    const int S = 1024;
+    QImage img(S, S, QImage::Format_ARGB32);
+    img.fill(QColor(QStringLiteral("#1e1f22")));        // Discord dark
+
+    QPainter p(&img);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::TextAntialiasing, true);
+
+    QPainterPath panel;
+    panel.addRoundedRect(96, 96, S - 192, S - 192, 96, 96);
+    p.fillPath(panel, QColor(accent.red(), accent.green(), accent.blue(), 38));
+    p.setPen(QPen(accent, 10));
+    p.drawPath(panel);
+
+    QFont f;
+    f.setBold(true);
+    f.setPixelSize(monogram.length() <= 2 ? 460 : 300);
+    p.setFont(f);
+    p.setPen(accent);
+    p.drawText(QRect(0, 0, S, S), Qt::AlignCenter, monogram);
+    p.end();
+
+    const QString parent = QFileInfo(outPath).absolutePath();
+    if (!parent.isEmpty()) QDir().mkpath(parent);
+    if (!img.save(outPath, "PNG")) {
+        if (err) *err = QStringLiteral("Cannot write %1").arg(outPath);
+        return false;
+    }
     return true;
 }
 
