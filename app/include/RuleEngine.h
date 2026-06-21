@@ -53,8 +53,13 @@ private:
         bool                        requireIntegration,
         bool                        genericProcessOnly) const;
 
-    /// Build the private fallback payload.
+    /// Build the private fallback payload (used when paused or private mode is on).
     [[nodiscard]] static PresencePayload privateFallback();
+
+    /// Build a generic, title-safe presence for an unmatched window when private
+    /// mode is OFF — shows the friendly app name (never the window title) so the
+    /// user sees real activity instead of the private fallback.
+    [[nodiscard]] static PresencePayload genericPresence(const WindowInfo& window);
 
     /// Resolve templates and fill a PresencePayload from a matched Rule.
     [[nodiscard]] PresencePayload resolveRule(

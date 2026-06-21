@@ -10,6 +10,7 @@
 //  7. Private fallback
 #include "RuleEngine.h"
 #include "TemplateEngine.h"
+#include <QHash>
 #include <QDateTime>
 #include <QDebug>
 
@@ -29,6 +30,49 @@ PresencePayload RuleEngine::privateFallback() {
     p.privacyLevel      = PrivacyLevel::Private;
     p.isPrivateFallback = true;
     p.matchedRuleName   = QStringLiteral("(private fallback)");
+    return p;
+}
+
+PresencePayload RuleEngine::genericPresence(const WindowInfo& window) {
+    // No window at all → fall back to the private placeholder.
+    if (window.processName.isEmpty()) {
+        return privateFallback();
+    }
+
+    // Friendly app name from the process name (e.g. "msedge.exe" -> "Microsoft
+    // Edge"). We deliberately use ONLY the app name, never window.windowTitle,
+    // so titles stay private by default per the privacy design.
+    QString proc = window.processName;
+    if (proc.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)) {
+        proc.chop(4);
+    }
+    static const QHash<QString, QString> kFriendly = {
+        {QStringLiteral("chrome"),          QStringLiteral("Google Chrome")},
+        {QStringLiteral("msedge"),          QStringLiteral("Microsoft Edge")},
+        {QStringLiteral("firefox"),         QStringLiteral("Firefox")},
+        {QStringLiteral("brave"),           QStringLiteral("Brave")},
+        {QStringLiteral("code"),            QStringLiteral("VS Code")},
+        {QStringLiteral("windowsterminal"), QStringLiteral("Windows Terminal")},
+        {QStringLiteral("explorer"),        QStringLiteral("File Explorer")},
+        {QStringLiteral("discord"),         QStringLiteral("Discord")},
+    };
+    const QString key  = proc.toLower();
+    QString friendly   = kFriendly.value(key);
+    if (friendly.isEmpty()) {
+        // Title-case the bare process name as a reasonable default.
+        friendly = proc;
+        if (!friendly.isEmpty()) {
+            friendly[0] = friendly[0].toUpper();
+        }
+    }
+
+    PresencePayload p;
+    p.name              = friendly;
+    p.details           = QStringLiteral("Active");
+    p.activityType      = ActivityType::Playing;
+    p.privacyLevel      = PrivacyLevel::Public;
+    p.isPrivateFallback = false;
+    p.matchedRuleName   = QStringLiteral("(no rule — generic app)");
     return p;
 }
 
@@ -80,8 +124,10 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
     //              this branch is intentionally left here for documentary clarity
     //              and in case the rule-matching strategy is tightened later).
 
-    // Priority 7 — private fallback.
-    return privateFallback();
+    // Priority 7 — no rule matched. Private mode is already handled at priority 1,
+    // so reaching here means private mode is OFF: show a generic, title-safe
+    // presence for the active app rather than the private "Computer" fallback.
+    return genericPresence(window);
 }
 
 // ── matchRule ─────────────────────────────────────────────────────────────────

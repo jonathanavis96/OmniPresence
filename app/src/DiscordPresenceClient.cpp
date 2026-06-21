@@ -88,6 +88,14 @@ void DiscordPresenceClient::connectToDiscord(const QString& appId) {
                 m_status = DiscordConnectionStatus::Connected;
                 emit connectionStatusChanged(m_status);
                 qDebug() << "[DiscordPresenceClient] Client ready.";
+                // Make sure the SDK user is Online — an Offline/Invisible status
+                // suppresses the rich presence on the profile and friends list.
+                m_client->SetOnlineStatus(
+                    discordpp::StatusType::Online,
+                    [](discordpp::ClientResult r) {
+                        qDebug() << "[DiscordPresenceClient] SetOnlineStatus(Online):"
+                                 << r.Successful();
+                    });
                 if (m_hasPending) {
                     sendPresenceNow();
                 }
@@ -262,6 +270,9 @@ discordpp::ActivityTypes toSdkActivityType(ActivityType t) {
 void DiscordPresenceClient::sendPresenceNow() {
     if (!m_client || !m_ready) return;
     const PresencePayload& p = m_lastSentPayload;
+    qDebug() << "[DiscordPresenceClient] Publishing presence:" << p.name
+             << "| details=" << p.details << "| state=" << p.state
+             << "| type=" << static_cast<int>(p.activityType);
 
     discordpp::Activity activity;
     activity.SetType(toSdkActivityType(p.activityType));
@@ -293,6 +304,7 @@ void DiscordPresenceClient::sendPresenceNow() {
         [this, p](discordpp::ClientResult result) {
             if (result.Successful()) {
                 m_hasPending = false;
+                qDebug() << "[DiscordPresenceClient] Presence published OK:" << p.name;
                 emit presenceUpdated(p);
             } else {
                 qWarning() << "[DiscordPresenceClient] UpdateRichPresence failed for"
