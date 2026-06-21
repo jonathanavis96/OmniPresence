@@ -107,7 +107,13 @@ public class OmniPresencePlugin extends Plugin {
      *  session stops POSTing, the context expires, and OmniPresence falls back to
      *  the raw window ("Java" for the dev client). Must be < that 120s window. */
     private volatile long lastPublishMs = 0L;
-    private static final long HEARTBEAT_MS = 45_000L;
+    /** Slack subtracted from the poll interval when deciding if an unchanged
+     *  state is due for a heartbeat re-POST, so the fixed-rate scheduler
+     *  reliably crosses the threshold each tick despite timing jitter. The
+     *  effective max staleness is therefore ~the configured poll interval
+     *  (default 5s, user-tunable 2–60s) — i.e. the log/presence refreshes on a
+     *  steady cadence rather than only when the activity changes. */
+    private static final long HEARTBEAT_SLACK_MS = 500L;
 
     @Override
     protected void startUp() {
@@ -284,12 +290,17 @@ public class OmniPresencePlugin extends Plugin {
         recentXpSkillIndex = -1;
 
         // Debounce: skip if the derived activity hasn't meaningfully changed —
-        // UNLESS the heartbeat is due, so the integration stays fresh (see
-        // HEARTBEAT_MS) and OmniPresence never reverts to the raw "Java" window.
+        // UNLESS a heartbeat is due, so the integration stays fresh and
+        // OmniPresence never reverts to the raw "Java" window. The heartbeat is
+        // tied to the poll interval (default 5s), so an unchanged state is
+        // re-POSTed on essentially every tick → the log/presence refreshes at
+        // least every poll interval rather than only on change.
         final long nowMs = System.currentTimeMillis();
+        final long heartbeatMs =
+            Math.max(2000L, config.pollIntervalSeconds() * 1000L - HEARTBEAT_SLACK_MS);
         final boolean unchanged = result.getActivity().equals(lastPublishedActivity)
                 && result.getConfidence() < 0.99;
-        if (unchanged && (nowMs - lastPublishMs) < HEARTBEAT_MS) {
+        if (unchanged && (nowMs - lastPublishMs) < heartbeatMs) {
             return;
         }
         lastPublishedActivity = result.getActivity();
