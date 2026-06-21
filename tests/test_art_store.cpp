@@ -49,7 +49,22 @@ private slots:
         const QString out = tmp.filePath(QStringLiteral("sub/mono.png"));  // nested → tests mkpath
         QString err;
         QVERIFY2(ArtStore::renderMonogram(out, QStringLiteral("YT"),
-                 QColor(QStringLiteral("#ff4444")), &err), qPrintable(err));
+                 QColor(QStringLiteral("#ff4444")), QString(), &err), qPrintable(err));
+        const QImage got(out);
+        QVERIFY(!got.isNull());
+        QCOMPARE(got.width(),  1024);
+        QCOMPARE(got.height(), 1024);
+    }
+
+    void renderMonogramWithLabelWrites1024Png() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString out = tmp.filePath(QStringLiteral("mono_label.png"));
+        QString err;
+        // Polished tile: big monogram + label band below (the osrs.png look).
+        QVERIFY2(ArtStore::renderMonogram(out, QStringLiteral("OSRS"),
+                 QColor(QStringLiteral("#22d3ee")), QStringLiteral("RuneScape"), &err),
+                 qPrintable(err));
         const QImage got(out);
         QVERIFY(!got.isNull());
         QCOMPARE(got.width(),  1024);

@@ -17,7 +17,7 @@ repositories {
     mavenCentral()
 }
 
-def runeLiteVersion = '1.10.47'
+def runeLiteVersion = '1.12.29.1'
 
 dependencies {
     compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
@@ -26,9 +26,10 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok:1.18.32'
 
     compileOnly 'com.google.code.gson:gson:2.10.1'
-    // OkHttp is bundled with the RuneLite client; declare as compileOnly so we
-    // don't shadow-jar it in.
-    compileOnly 'com.squareup.okhttp3:okhttp:4.12.0'
+    // OkHttp + Gson are provided by the RuneLite client at runtime. Pin OkHttp to
+    // the version RuneLite actually ships (3.14.x) so we compile against the same
+    // API we'll run against — RuneLite has no okhttp 4.x at runtime.
+    compileOnly 'com.squareup.okhttp3:okhttp:3.14.9'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.mockito:mockito-core:5.11.0'

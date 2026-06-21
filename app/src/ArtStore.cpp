@@ -9,6 +9,8 @@
 #include <QPainterPath>
 #include <QPen>
 #include <QFont>
+#include <QFontMetrics>
+#include <QLinearGradient>
 
 namespace OmniPresence {
 
@@ -58,27 +60,57 @@ bool ArtStore::importImage(const QString& srcPath, const QString& key,
 }
 
 bool ArtStore::renderMonogram(const QString& outPath, const QString& monogram,
-                              const QColor& accent, QString* err) {
+                              const QColor& accent, const QString& label,
+                              QString* err) {
     const int S = 1024;
     QImage img(S, S, QImage::Format_ARGB32);
-    img.fill(QColor(QStringLiteral("#1e1f22")));        // Discord dark
 
     QPainter p(&img);
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setRenderHint(QPainter::TextAntialiasing, true);
 
+    // Dark vertical gradient backdrop (matches the bundled code.png / osrs.png).
+    QLinearGradient bg(0, 0, 0, S);
+    bg.setColorAt(0.0, QColor(QStringLiteral("#15171b")));
+    bg.setColorAt(1.0, QColor(QStringLiteral("#0d0f12")));
+    p.fillRect(0, 0, S, S, bg);
+
+    // Rounded panel: faint accent fill + accent border.
     QPainterPath panel;
-    panel.addRoundedRect(96, 96, S - 192, S - 192, 96, 96);
-    p.fillPath(panel, QColor(accent.red(), accent.green(), accent.blue(), 38));
-    p.setPen(QPen(accent, 10));
+    panel.addRoundedRect(64, 64, S - 128, S - 128, 88, 88);
+    p.fillPath(panel, QColor(accent.red(), accent.green(), accent.blue(), 28));
+    p.setPen(QPen(accent, 12));
     p.drawPath(panel);
 
-    QFont f;
-    f.setBold(true);
-    f.setPixelSize(monogram.length() <= 2 ? 460 : 300);
-    p.setFont(f);
+    const bool hasLabel = !label.trimmed().isEmpty();
+
+    // Monogram: large, accent. Shift up when a caption sits below it.
+    QFont mf;
+    mf.setBold(true);
+    const int len = monogram.trimmed().length();
+    mf.setPixelSize(len <= 2 ? 460 : (len == 3 ? 340 : 260));
+    p.setFont(mf);
     p.setPen(accent);
-    p.drawText(QRect(0, 0, S, S), Qt::AlignCenter, monogram);
+    const int monoTop = hasLabel ? 150 : 0;
+    const int monoH   = hasLabel ? 560 : S;
+    p.drawText(QRect(0, monoTop, S, monoH), Qt::AlignCenter, monogram);
+
+    // Caption band: lighter, bold, letter-spaced (the "RUNESCAPE" / "CODE" line).
+    if (hasLabel) {
+        QFont lf;
+        lf.setBold(true);
+        QString caption = label.trimmed().toUpper();
+        // Scale the caption so long names still fit the panel width.
+        int px = 132;
+        for (; px >= 60; px -= 6) {
+            lf.setPixelSize(px);
+            lf.setLetterSpacing(QFont::AbsoluteSpacing, px * 0.12);
+            if (QFontMetrics(lf).horizontalAdvance(caption) <= S - 220) break;
+        }
+        p.setFont(lf);
+        p.setPen(QColor(QStringLiteral("#dbe1e8")));
+        p.drawText(QRect(0, 700, S, 200), Qt::AlignCenter, caption);
+    }
     p.end();
 
     const QString parent = QFileInfo(outPath).absolutePath();

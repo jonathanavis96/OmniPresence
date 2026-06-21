@@ -18,10 +18,14 @@ public:
     /// Lowercase, [a-z0-9_]-only key derived from a filename or label.
     static QString slugify(const QString& raw);
 
-    /// Render a 1024x1024 monogram tile (Discord-dark bg + accent panel) to outPath.
+    /// Render a 1024x1024 art tile to outPath in the polished house style:
+    /// dark vertical gradient, rounded accent-bordered panel, a large accent
+    /// monogram, and (when label is non-empty) a lighter letter-spaced caption
+    /// band below it — matching the bundled code.png / osrs.png look.
     /// Creates parent dirs. Returns false (and sets *err) on write failure.
     static bool renderMonogram(const QString& outPath, const QString& monogram,
-                               const QColor& accent, QString* err);
+                               const QColor& accent, const QString& label,
+                               QString* err);
 
     QString artDir() const { return m_dir; }
 
