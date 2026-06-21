@@ -147,6 +147,11 @@ bool ConfigStore::parseJson(const QByteArray& data) {
             ? RuleSet::fromJson(root[QStringLiteral("ruleSet")].toObject())
             : RuleSet::fromJson(root);
     migrateRuleTemplates();
+    // Art-asset metadata (key -> hover text). Optional top-level object.
+    m_assetKeys.clear();
+    const QJsonObject assets = root.value(QStringLiteral("assetKeys")).toObject();
+    for (auto it = assets.constBegin(); it != assets.constEnd(); ++it)
+        m_assetKeys.insert(it.key(), it.value().toString());
     return true;
 }
 
@@ -181,6 +186,10 @@ QByteArray ConfigStore::serialiseJson() const {
     // and reloads cleanly.
     QJsonObject root = settingsToJson(m_settings);
     root[QStringLiteral("rules")] = m_ruleSet.toJson().value(QStringLiteral("rules"));
+    QJsonObject assets;
+    for (auto it = m_assetKeys.constBegin(); it != m_assetKeys.constEnd(); ++it)
+        assets[it.key()] = it.value();
+    root[QStringLiteral("assetKeys")] = assets;
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 

@@ -8,6 +8,7 @@
 #include "Rule.h"
 #include <QObject>
 #include <QString>
+#include <QMap>
 
 namespace OmniPresence {
 
@@ -37,8 +38,16 @@ public:
     [[nodiscard]] RuleSet&    ruleSet()    noexcept { return m_ruleSet;  }
     [[nodiscard]] AppSettings& settings()  noexcept { return m_settings; }
 
+    /// Art-asset metadata: image key -> hover text. The local PNG path is
+    /// derived from ArtStore::localPathForKey(key), not stored here.
+    [[nodiscard]] const QMap<QString, QString>& assetKeys() const noexcept { return m_assetKeys; }
+    void setAssetKey(const QString& key, const QString& hoverText) { m_assetKeys.insert(key, hoverText); }
+
     /// Absolute path of the active config file.
     [[nodiscard]] QString configFilePath() const;
+
+    /// Test seam: override the resolved config path before load()/save().
+    void setConfigPathForTest(const QString& path) { m_configPath = path; }
 
 signals:
     void configLoaded();
@@ -54,6 +63,7 @@ private:
 
     RuleSet     m_ruleSet;
     AppSettings m_settings;
+    QMap<QString, QString> m_assetKeys;
     QString     m_configPath;
 };
 
