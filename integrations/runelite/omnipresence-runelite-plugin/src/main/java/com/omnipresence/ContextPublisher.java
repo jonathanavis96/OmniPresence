@@ -105,7 +105,11 @@ public class ContextPublisher {
         try {
             executor.awaitTermination(2, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            // RuneLite Plugin Hub verification bans Thread.interrupt(), so we
+            // cannot restore the interrupt flag here (the usual idiom). Safe to
+            // swallow: this only runs during plugin teardown and nothing
+            // downstream re-checks the flag.
+            log.debug("OmniPresence: interrupted while draining publisher executor");
         }
     }
 }
