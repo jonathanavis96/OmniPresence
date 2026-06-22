@@ -4,6 +4,7 @@ import lombok.Value;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
 /**
  * Pure-ish activity inference from observed RuneLite signals.
@@ -54,6 +55,16 @@ public class ActivityInferencer {
 
     /** Nightmare of Ashihama. */
     private static final int REGION_NIGHTMARE = 15515;
+
+    /** Fossil Island birdhouse trap regions (the 4 spots a run cycles through).
+     *  Hunter/Crafting XP in any of these is a birdhouse run, not standalone
+     *  skill training — see the birdhouse branch in {@link #infer0}. */
+    private static final Set<Integer> BIRDHOUSE_REGIONS = Set.of(14651, 14652, 14906, 14908);
+
+    /** Skill indices that drop XP during a birdhouse run: Crafting (12, building
+     *  the birdhouse) and Hunter (21, dismantling/collecting). */
+    private static final int SKILL_CRAFTING = 12;
+    private static final int SKILL_HUNTER = 21;
 
     // ---------------------------------------------------------------------------
     // Animation IDs (sampled from the OSRS animation list; extend as needed).
@@ -165,15 +176,24 @@ public class ActivityInferencer {
      *  if the user hasn't set a custom one in the plugin config. */
     static final String DEFAULT_HOUSE_LABEL = "Chilling at Home";
 
-    /** How many subsequent polls a finished combat reading bridges before
-     *  releasing to Idle. One poll (~2s) covers the brief gap between kills where
-     *  the interaction target decays to null and a combat-skill XP drop lands. */
-    private static final int STICKY_POLLS = 1;
+    /** Wall-clock window a finished activity is held through idle gaps before the
+     *  player is surfaced as AFK. Until this elapses the last real activity keeps
+     *  showing ("hold the last info until there's an update"); after it, "AFK".
+     *  Generalises the old 1-poll combat bridge and is poll-interval-independent. */
+    private static final long AFK_HOLD_MS = 120_000L; // 2 minutes
 
-    // Combat-stickiness state (the only mutable state; isolated to the public
-    // infer() wrapper, leaving infer0() pure for unit testing).
-    private InferenceResult stickyCombat = null;
-    private int stickyTtl = 0;
+    // AFK-hold state (the only mutable state; isolated to the public infer()
+    // wrapper, leaving infer0() pure for unit testing).
+    private InferenceResult lastRealActivity = null;
+    private long lastRealActivityMs = 0L;
+
+    /** Wall-clock source, injectable so timing behaviour is unit-testable. */
+    private LongSupplier clock = System::currentTimeMillis;
+
+    /** Test seam: override the wall-clock used for the AFK hold. */
+    void setClock(LongSupplier clock) {
+        this.clock = clock;
+    }
 
     // ---------------------------------------------------------------------------
     // Public result type
@@ -250,38 +270,36 @@ public class ActivityInferencer {
         InferenceResult result = infer0(
             interactingNpcName, currentAnimation, recentXpSkillIndex,
             regionId, isInBank, isLoggedIn, inPoh, houseLabel);
-        return applyStickiness(result);
+        return applyAfkHold(result);
     }
 
     /**
-     * Bridge a finished combat reading across a brief ambiguous gap.
+     * Hold the last real activity through idle gaps; surface AFK only after a
+     * sustained pause.
      *
-     * Combat sets "Slaying …"/"Fighting …"; the interaction target then decays to
-     * null for a poll or two between kills, during which a stray combat-skill XP
-     * drop (Prayer/Hitpoints) would otherwise read as "Idle". For up to
-     * {@link #STICKY_POLLS} polls we hold the last combat reading instead, then
-     * release. Any other definite activity (banking, GE, skilling, real training)
-     * clears the sticky state immediately.
+     * {@link #infer0} emits the internal "Idle" sentinel whenever nothing
+     * concrete is observed — the brief gap between kills, running between
+     * birdhouses, or a genuine pause. Rather than flicker to idle instantly, we
+     * keep showing the last concrete reading until {@link #AFK_HOLD_MS} has
+     * elapsed since it was last seen, then release to "AFK". Any concrete reading
+     * (combat, skilling, birdhouse run, banking, GE, POH label, logged out)
+     * refreshes the hold. The internal "Idle" string therefore never escapes —
+     * callers see either a held activity or "AFK".
      */
-    private InferenceResult applyStickiness(InferenceResult result) {
-        final String activity = result.getActivity();
-        if (activity.startsWith("Slaying ") || activity.startsWith("Fighting ")) {
-            stickyCombat = result;
-            stickyTtl = STICKY_POLLS;
+    private InferenceResult applyAfkHold(InferenceResult result) {
+        final long now = clock.getAsLong();
+        if (!"Idle".equals(result.getActivity())) {
+            lastRealActivity = result;
+            lastRealActivityMs = now;
             return result;
         }
-        if ("Idle".equals(activity)) {
-            if (stickyTtl > 0 && stickyCombat != null) {
-                stickyTtl--;
-                return stickyCombat;
-            }
-            stickyCombat = null;
-            return result;
+        // Reading degraded to idle. Hold the last real activity until the window
+        // expires, then surface AFK (keeping the idle reading's location).
+        if (lastRealActivity != null && (now - lastRealActivityMs) < AFK_HOLD_MS) {
+            return lastRealActivity;
         }
-        // Definite non-combat activity → drop any lingering combat memory.
-        stickyCombat = null;
-        stickyTtl = 0;
-        return result;
+        lastRealActivity = null;
+        return new InferenceResult("AFK", null, null, result.getLocation(), result.getConfidence());
     }
 
     /** Pure inference from observed signals (no cross-call state). */
@@ -344,6 +362,18 @@ public class ActivityInferencer {
                 locationFromRegion(regionId),
                 0.80
             );
+        }
+
+        // 4.5 Birdhouse run (Fossil Island). A run cycles through 4 birdhouse
+        //     spots dropping Crafting XP (building) then Hunter XP (collecting),
+        //     which would otherwise flip between "Training Crafting" and
+        //     "Training Hunter" every poll. In a known birdhouse region with
+        //     either of those XP drops, collapse it to a single "Birdhouse run";
+        //     the AFK hold then bridges the running-between-houses gaps so it
+        //     shows continuously rather than flickering to idle.
+        if (BIRDHOUSE_REGIONS.contains(regionId)
+                && (recentXpSkillIndex == SKILL_HUNTER || recentXpSkillIndex == SKILL_CRAFTING)) {
+            return new InferenceResult("Birdhouse run", null, "Hunter", "Fossil Island", 0.85);
         }
 
         // 5. Skilling — animation-based

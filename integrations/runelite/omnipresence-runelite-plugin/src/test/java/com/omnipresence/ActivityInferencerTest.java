@@ -83,19 +83,20 @@ public class ActivityInferencerTest {
     }
 
     @Test
-    public void barePrayerXp_noCombat_isIdle_notTrainingPrayer() {
+    public void barePrayerXp_noCombat_isAfk_notTrainingPrayer() {
         // Fresh inferencer, no prior combat: a lone Prayer XP drop with no animation
         // and no NPC is a combat byproduct, never a standalone "Training Prayer".
+        // With no prior real activity to hold, it surfaces as AFK (was "Idle").
         ActivityInferencer.InferenceResult result = inferencer.infer(
             null, -1, 5, -1, false, true); // Prayer XP only
-        assertEquals("Idle", result.getActivity());
+        assertEquals("AFK", result.getActivity());
     }
 
     @Test
-    public void bareHitpointsXp_noCombat_isIdle() {
+    public void bareHitpointsXp_noCombat_isAfk() {
         ActivityInferencer.InferenceResult result = inferencer.infer(
             null, -1, 3, -1, false, true); // Hitpoints XP only
-        assertEquals("Idle", result.getActivity());
+        assertEquals("AFK", result.getActivity());
     }
 
     @Test
@@ -108,14 +109,39 @@ public class ActivityInferencerTest {
     }
 
     @Test
-    public void combatStickiness_expires_afterSustainedIdle() {
-        // After combat, stickiness bridges ONE ambiguous poll, then releases to Idle
-        // so a genuinely-finished fight doesn't linger forever.
-        inferencer.infer("Tormented Demon", 808, 18, 6557, false, true); // Slaying (sticky armed)
-        inferencer.infer(null, -1, 5, 6557, false, true);                // bridged (sticky spent)
-        ActivityInferencer.InferenceResult released = inferencer.infer(
-            null, -1, -1, 6557, false, true);                            // nothing left → Idle
-        assertEquals("Idle", released.getActivity());
+    public void afkHold_holdsLastActivity_thenReleasesToAfk() {
+        // The AFK hold keeps showing the last real activity through idle gaps, and
+        // only flips to AFK once AFK_HOLD_MS (2 min) has elapsed since it was seen.
+        long[] now = {0L};
+        inferencer.setClock(() -> now[0]);
+
+        // t=0: Slaying → hold armed.
+        assertEquals("Slaying Tormented Demons",
+            inferencer.infer("Tormented Demon", 808, 18, 6557, false, true).getActivity());
+
+        // t=60s: idle (no NPC, no XP) — still within the 2-min window → held.
+        now[0] = 60_000L;
+        assertEquals("Slaying Tormented Demons",
+            inferencer.infer(null, -1, -1, 6557, false, true).getActivity());
+
+        // t=121s: >2 min since the last real activity → released to AFK.
+        now[0] = 121_000L;
+        assertEquals("AFK",
+            inferencer.infer(null, -1, -1, 6557, false, true).getActivity());
+    }
+
+    @Test
+    public void afkHold_concreteActivity_refreshesTheWindow() {
+        // A new concrete reading mid-hold resets the 2-min clock from that point.
+        long[] now = {0L};
+        inferencer.setClock(() -> now[0]);
+
+        inferencer.infer("Tormented Demon", 808, 18, 6557, false, true); // t=0 Slaying
+        now[0] = 119_000L;
+        inferencer.infer(null, 867, 8, -1, false, true);                  // t=119s Woodcutting (refresh)
+        now[0] = 200_000L;                                                // 81s after refresh < 2 min
+        assertEquals("Woodcutting",
+            inferencer.infer(null, -1, -1, -1, false, true).getActivity()); // still held
     }
 
     // ---------------------------------------------------------------------------
@@ -156,11 +182,43 @@ public class ActivityInferencerTest {
     }
 
     @Test
-    public void notInPoh_isStillIdle() {
-        // Same idle inputs but NOT in a POH → plain Idle (regression guard).
+    public void notInPoh_isAfk() {
+        // Same idle inputs but NOT in a POH, with no activity to hold → AFK
+        // (was plain "Idle" before the rename/hold).
         ActivityInferencer.InferenceResult result = inferencer.infer(
             null, -1, -1, 47487, false, true, false, "Chilling at Home");
-        assertEquals("Idle", result.getActivity());
+        assertEquals("AFK", result.getActivity());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Birdhouse run (Fossil Island) — Hunter + Crafting XP across the 4 birdhouse
+    // regions collapses to a single "Birdhouse run" instead of flickering between
+    // "Training Hunter" and "Training Crafting".
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void birdhouseRegion_withHunterXp_isBirdhouseRun() {
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, 21, 14906, false, true); // Hunter XP in a birdhouse region
+        assertEquals("Birdhouse run", result.getActivity());
+        assertEquals("Fossil Island", result.getLocation());
+        assertEquals("Hunter", result.getSkill());
+    }
+
+    @Test
+    public void birdhouseRegion_withCraftingXp_isBirdhouseRun() {
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, 12, 14651, false, true); // Crafting XP (building) in a birdhouse region
+        assertEquals("Birdhouse run", result.getActivity());
+    }
+
+    @Test
+    public void hunterXp_outsideBirdhouseRegion_isTrainingHunter() {
+        // Regression guard: Hunter XP elsewhere is still ordinary training, not a
+        // birdhouse run.
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, 21, -1, false, true);
+        assertEquals("Training Hunter", result.getActivity());
     }
 
     // ---------------------------------------------------------------------------
