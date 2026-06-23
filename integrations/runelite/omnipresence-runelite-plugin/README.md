@@ -1,5 +1,18 @@
 # OmniPresence RuneLite Plugin
 
+> ## ⚠️ DEPRECATED — NOT THE METHOD IN USE (2026-06-23)
+> OmniPresence **no longer uses this custom plugin / HTTP-POST method**. It now runs
+> on the **real RuneLite client** and intercepts RuneLite's **built-in Discord
+> plugin** over the `\\.\pipe\discord-ipc-0` named pipe (see
+> `app/src/NamedPipeInterceptor.cpp` and `docs/DECISIONS.md`).
+>
+> This means we **no longer sideload a standalone developer Java RuneLite client**
+> and **no longer need** `--developer-mode` / `--insecure-write-credentials` or a
+> `~/.runelite/credentials.properties` file.
+>
+> **The code in this directory is retained on purpose** (reference / possible future
+> use) but is not part of the live pipeline. Do not delete it.
+
 A RuneLite external plugin that infers your current OSRS activity from in-game events and reports it to the **OmniPresence** context server running locally on your PC. OmniPresence then uses this context to drive Discord Rich Presence.
 
 > **Status: unbuilt scaffold.** The code compiles against the RuneLite API but has not been built or tested against a live client on this machine (no JDK present in the build environment). It follows the standard RuneLite external-plugin layout and should build cleanly with a JDK 11+ and Gradle.

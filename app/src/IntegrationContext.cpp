@@ -21,6 +21,13 @@ void IntegrationContext::update(const QString& source, const QJsonObject& data) 
     p.receivedAt  = QDateTime::currentDateTimeUtc();
 }
 
+bool IntegrationContext::refresh(const QString& source) {
+    const auto it = m_payloads.find(source);
+    if (it == m_payloads.end()) return false;
+    it->receivedAt = QDateTime::currentDateTimeUtc();
+    return true;
+}
+
 const IntegrationPayload* IntegrationContext::get(const QString& source) const {
     const auto it = m_payloads.constFind(source);
     return (it != m_payloads.constEnd()) ? &(*it) : nullptr;

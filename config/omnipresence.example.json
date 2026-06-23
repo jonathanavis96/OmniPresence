@@ -25,7 +25,7 @@
       "matchBrowserCategory": "",
       "matchIntegrationSource": "runelite",
       "activityType": "Playing",
-      "activityNameTemplate": "{{runelite.activity}}",
+      "activityNameTemplate": "{{runelite.activity or runelite.location}}",
       "detailsTemplate": "",
       "stateTemplate": "{{runelite.location}}",
       "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/osrs.png?v=4",

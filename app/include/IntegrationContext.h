@@ -31,6 +31,12 @@ public:
     /// Store or replace the payload for `source`.
     void update(const QString& source, const QJsonObject& data);
 
+    /// Re-stamp an existing payload's freshness to "now" without changing its
+    /// data, so a non-heartbeating feed (e.g. the RuneLite Discord-IPC capture,
+    /// which only sends on change) does not decay to stale while its app is still
+    /// active. Returns false if no payload exists for `source`.
+    bool refresh(const QString& source);
+
     /// Retrieve the latest (possibly stale) payload for `source`.
     [[nodiscard]] const IntegrationPayload* get(const QString& source) const;
 

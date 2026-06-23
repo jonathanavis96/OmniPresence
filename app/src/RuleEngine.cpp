@@ -97,13 +97,25 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
 
     const QList<Rule> sorted = rules.sortedRules();
 
+    // A matched rule that renders a BLANK name must never win: Discord shows an
+    // empty activity name as the bare application name ("OmniPresence"). This
+    // happens e.g. when the RuneLite window is focused but its integration feed
+    // has gone stale, so {{runelite.activity or runelite.location}} resolves to
+    // "". In that case we fall through to the next priority (ultimately
+    // genericPresence) rather than publish an empty name.
+    auto resolveIfNamed = [&](const Rule& r) -> std::optional<PresencePayload> {
+        PresencePayload p = resolveRule(r, window, integrations, previousPayload);
+        if (p.name.isEmpty()) return std::nullopt;
+        return p;
+    };
+
     // Priority 3 — deep integration context match (rule requires integration data).
     {
         const auto opt = matchRule(sorted, window, integrations,
                                    /*requireIntegration=*/true,
                                    /*genericProcessOnly=*/false);
         if (opt.has_value()) {
-            return resolveRule(*opt, window, integrations, previousPayload);
+            if (auto p = resolveIfNamed(*opt)) return *p;
         }
     }
 
@@ -117,7 +129,7 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
                                    /*requireIntegration=*/false,
                                    /*genericProcessOnly=*/false);
         if (opt.has_value()) {
-            return resolveRule(*opt, window, integrations, previousPayload);
+            if (auto p = resolveIfNamed(*opt)) return *p;
         }
     }
 

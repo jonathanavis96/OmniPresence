@@ -171,3 +171,32 @@ Activity Settings → Registered Games** — toggle detection off for RuneLite (
 it from the list); and/or **Activity Privacy → "Display currently running game as a
 status message"** off. With Discord's auto-detection disabled, the profile shows only
 OmniPresence's published presence (our set name/line). No code change shipped.
+
+## RuneLite presence source: built-in Discord plugin via IPC interception, NOT our custom plugin (2026-06-23)
+
+**Decision:** OmniPresence captures RuneLite activity by **intercepting RuneLite's
+built-in Discord plugin** on the `\\.\pipe\discord-ipc-0` named pipe
+(`app/src/NamedPipeInterceptor.cpp`). We run the **real, official RuneLite client**.
+
+**Deprecated (code retained, not deleted):** the earlier method — a **standalone
+developer Java RuneLite** client sideloading our custom
+`integrations/runelite/omnipresence-runelite-plugin` which POSTed inferred context
+to the local HTTP server (`/integrations/runelite/context`). That required
+`--developer-mode` + `--insecure-write-credentials` (the Jagex Launcher can't pass
+those), which is why a locally-built dev client was needed.
+
+**Why switched:** the real client + built-in plugin removes the dev-client sideload,
+the `~/.runelite/credentials.properties` bypass file, and the maintenance of our own
+inference plugin. The plugin source stays in `integrations/runelite/` for reference.
+
+**Removed as part of this switch (2026-06-23):**
+- the standalone developer Java RuneLite clone at `C:\dev\runelite`
+- `C:\Users\<user>\.runelite\credentials.properties` (dev `--insecure-write-credentials` file)
+
+**Trade-off / follow-on:** the built-in Discord plugin only sends `SET_ACTIVITY`
+**on change** (no heartbeat), unlike our old plugin's ~5 s re-POST. With the 120 s
+freshness window this caused steady-state sessions (e.g. training one skill) to go
+stale and publish a **blank name** → Discord showed the bare "OmniPresence".
+Fixed by (a) a focus-gated RuneLite keep-alive that re-stamps the payload every 30 s
+while RuneLite is the focused window, and (b) an empty-name guard in `RuleEngine`
+that never lets a rule publish a blank activity name.

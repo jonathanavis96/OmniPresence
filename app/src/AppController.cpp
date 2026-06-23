@@ -132,6 +132,14 @@ AppController::AppController(QObject* parent)
     m_captureTimer = new QTimer(this);
     m_captureTimer->setInterval(1000);
     connect(m_captureTimer, &QTimer::timeout, this, &AppController::onCaptureTick);
+
+    // ── RuneLite keep-alive (30 s) ────────────────────────────────────────────
+    // Well under the 120 s freshness window, so the last RuneLite reading never
+    // decays to stale while you're still in-game (see onRuneliteKeepAliveTick).
+    m_runeliteKeepAliveTimer = new QTimer(this);
+    m_runeliteKeepAliveTimer->setInterval(30000);
+    connect(m_runeliteKeepAliveTimer, &QTimer::timeout,
+            this, &AppController::onRuneliteKeepAliveTick);
 }
 
 AppController::~AppController() = default;
@@ -148,6 +156,7 @@ void AppController::initialise() {
     m_runeliteInterceptor->start();
     m_watcher->start();
     m_discordCallbackTimer->start();
+    m_runeliteKeepAliveTimer->start();
 }
 
 // ── Property getters ──────────────────────────────────────────────────────────
@@ -211,6 +220,27 @@ void AppController::onRuneliteActivityCaptured(const QString& activity,
 
 void AppController::onDiscordCallbackTimer() {
     m_discordClient->runCallbacks();
+}
+
+void AppController::onRuneliteKeepAliveTick() {
+    // RuneLite's Discord-IPC feed only sends SET_ACTIVITY on change, so a steady
+    // session (e.g. training one skill in one place) would otherwise let the
+    // runelite payload cross the 120 s freshness window and publish a blank name
+    // → Discord shows the bare "OmniPresence". While RuneLite is the FOCUSED
+    // window the last reading is still the best estimate of what you're doing, so
+    // re-stamp it to "now". Detection mirrors RuleEngine::matchRule (the dev
+    // client runs as java.exe, recognised by window title).
+    const QString pn = m_currentWindow.processName.toLower();
+    const QString wt = m_currentWindow.windowTitle.toLower();
+    const bool runeliteFocused =
+        pn.contains(QLatin1String("runelite")) ||
+        ((pn.contains(QLatin1String("java")) || pn.contains(QLatin1String("javaw"))) &&
+         (wt.contains(QLatin1String("runelite")) || wt.contains(QLatin1String("old school"))));
+    if (!runeliteFocused) return;
+
+    if (m_integrationContext.refresh(QStringLiteral("runelite"))) {
+        evaluateAndPublish();
+    }
 }
 
 // ── Core evaluation ───────────────────────────────────────────────────────────

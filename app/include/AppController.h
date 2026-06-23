@@ -154,6 +154,10 @@ private slots:
     void onRuneliteActivityCaptured(const QString& activity, const QString& location);
     void onDiscordCallbackTimer();
     void onCaptureTick();
+    /// Keep the RuneLite integration feed fresh while RuneLite is the focused
+    /// window — its Discord-IPC source only sends on change, so a steady session
+    /// would otherwise let the payload go stale and publish a blank name.
+    void onRuneliteKeepAliveTick();
 
 private:
     void evaluateAndPublish();
@@ -192,6 +196,7 @@ private:
 
     class QTimer*   m_discordCallbackTimer{nullptr};
     class QTimer*   m_captureTimer{nullptr};
+    class QTimer*   m_runeliteKeepAliveTimer{nullptr};
     bool            m_capturing{false};
     int             m_captureCountdown{0};
 };

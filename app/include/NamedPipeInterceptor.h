@@ -8,9 +8,12 @@
 //   opcodes: 0=Handshake 1=Frame 2=Close 3=Ping 4=Pong
 //
 // IMPORTANT — startup ordering:
-//   Quit Discord BEFORE launching OmniPresence.  If Discord already owns
-//   discord-ipc-0, CreateNamedPipeW returns ERROR_PIPE_BUSY / ERROR_ACCESS_DENIED
-//   and the interceptor logs guidance instead of crashing.
+//   OmniPresence must own discord-ipc-0 BEFORE Discord does.  If Discord already
+//   owns it, CreateNamedPipeW returns ERROR_PIPE_BUSY / ERROR_ACCESS_DENIED.  The
+//   interceptor then performs a ONE-TIME auto-bounce: it kills Discord, claims the
+//   pipe, and relaunches Discord (which falls back to ipc-1).  This removes the
+//   manual "start OmniPresence before Discord" requirement.  Disable by setting
+//   the env var OMNIPRESENCE_NO_AUTO_BOUNCE=1 (then it just logs guidance).
 #pragma once
 
 #include <QObject>
@@ -18,7 +21,9 @@
 
 #ifdef Q_OS_WIN
 #include <atomic>
+#include <mutex>
 #include <thread>
+#include <vector>
 #include <windows.h>
 #endif
 
@@ -48,7 +53,17 @@ signals:
 
 #ifdef Q_OS_WIN
 private:
+    /// Acceptor loop: repeatedly creates a fresh pipe INSTANCE and waits for a
+    /// client.  Each accepted client is handed to its own serviceClient() thread
+    /// so multiple Discord clients (e.g. RuneLite's built-in plugin AND our own
+    /// Social SDK probe) can be connected simultaneously — the single-instance
+    /// server used to let the first client squat the only slot forever.
     void workerLoop();
+
+    /// Service one connected client (handshake/frames/ping/close) until it
+    /// disconnects.  Owns \p pipe: closes it and removes itself from the live
+    /// client list on exit.  Runs on its own std::thread.
+    void serviceClient(HANDLE pipe);
 
     /// Read exactly \p count bytes from \p pipe into \p buf.
     /// Returns false on EOF or error (treat as disconnect).
@@ -58,9 +73,31 @@ private:
     /// CRITICAL: does NOT call FlushFileBuffers — see implementation comment.
     static bool writeFrame(HANDLE pipe, int opcode, const QString& json);
 
-    std::thread          m_thread;
+    /// Kill any running Discord so it releases discord-ipc-0.  Returns true if a
+    /// Discord process was actually terminated (i.e. a relaunch is warranted).
+    static bool killDiscord();
+
+    /// Relaunch Discord via its updater (it falls back to ipc-1 since we now own
+    /// ipc-0).  Best-effort; logs on failure.
+    static void relaunchDiscord();
+
+    std::thread          m_thread;             // acceptor thread (workerLoop)
     std::atomic<bool>    m_running{false};
-    HANDLE               m_pipe{INVALID_HANDLE_VALUE};
+
+    // Concurrency: the acceptor owns m_acceptPipe (the instance currently waiting
+    // in ConnectNamedPipe); once a client connects, ownership transfers to a
+    // serviceClient thread and the handle is tracked in m_clientPipes.  All three
+    // are guarded by m_clientsMutex.  stop() closes m_acceptPipe to unblock the
+    // acceptor and CancelIoEx()es each client handle to unblock its reader, then
+    // joins every thread (each serviceClient closes its own handle on exit).
+    std::mutex                m_clientsMutex;
+    HANDLE                    m_acceptPipe{INVALID_HANDLE_VALUE};
+    std::vector<HANDLE>       m_clientPipes;
+    std::vector<std::thread>  m_clientThreads;
+
+    bool                 m_autoBounce{true};   // gated off by OMNIPRESENCE_NO_AUTO_BOUNCE
+    bool                 m_bounceTried{false};  // one-shot: never loop-kills Discord
+    bool                 m_relaunchDiscordPending{false}; // restart after we claim ipc-0
 #endif
 };
 
