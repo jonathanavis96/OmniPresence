@@ -64,6 +64,12 @@ signals:
     void connectionStatusChanged(DiscordConnectionStatus status);
     void presenceUpdated(const OmniPresence::PresencePayload& payload);
     void sdkError(const QString& message);
+    /// Emitted immediately before a fresh OAuth Authorize() (initial or re-auth).
+    /// The Social SDK routes the authorize prompt through the real Discord client
+    /// over discord-ipc-0 — so any local pipe impersonator (NamedPipeInterceptor)
+    /// MUST release that pipe first, or the SDK's authorize lands on it, gets a
+    /// bogus empty code, and the token exchange fails with HTTP 400.
+    void authorizationStarting();
 
 private:
 #ifdef OMNIPRESENCE_WITH_DISCORD

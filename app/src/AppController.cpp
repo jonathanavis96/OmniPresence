@@ -113,7 +113,23 @@ AppController::AppController(QObject* parent)
                     status == DiscordConnectionStatus::Connected) {
                     m_discordError.clear();
                 }
+                // Only claim discord-ipc-0 for RuneLite capture once Discord itself
+                // is fully connected.  Starting the interceptor earlier would let it
+                // intercept our own SDK's OAuth authorize on ipc-0 (empty code →
+                // token exchange 400).  start() is idempotent.
+                if (status == DiscordConnectionStatus::Connected) {
+                    m_runeliteInterceptor->start();
+                }
                 emit discordStatusChanged();
+            });
+
+    // Before every fresh OAuth authorize (initial or a mid-session re-auth after a
+    // rejected token), release discord-ipc-0 so the SDK's authorize prompt reaches
+    // the real Discord client instead of our own impersonator.  Synchronous stop()
+    // on this thread — the pipe is free before Authorize() goes out.
+    connect(m_discordClient.get(), &DiscordPresenceClient::authorizationStarting,
+            this, [this]() {
+                m_runeliteInterceptor->stop();
             });
 
     connect(m_discordClient.get(), &DiscordPresenceClient::sdkError,
@@ -153,7 +169,10 @@ void AppController::initialise() {
     }
 
     m_contextServer->start();
-    m_runeliteInterceptor->start();
+    // NOTE: the RuneLite interceptor is NOT started here.  It is started only once
+    // Discord reaches Connected (see the connectionStatusChanged handler) and
+    // stopped for the duration of any fresh OAuth authorize (authorizationStarting),
+    // so it can never intercept our own SDK's authorize on discord-ipc-0.
     m_watcher->start();
     m_discordCallbackTimer->start();
     m_runeliteKeepAliveTimer->start();

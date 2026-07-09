@@ -163,6 +163,13 @@ void DiscordPresenceClient::beginAuthorization() {
     qDebug() << "[DiscordPresenceClient] Authorize() called for app" << m_appId
              << "— a browser tab or Discord prompt should open now.";
 
+    // The authorize prompt is routed through the real Discord client over
+    // discord-ipc-0.  Tell listeners (AppController) to release that pipe now so
+    // OmniPresence's own NamedPipeInterceptor can't intercept our authorize and
+    // hand the SDK an empty code (→ token exchange HTTP 400).  Synchronous slot
+    // on the same thread, so the interceptor is down before Authorize() fires.
+    emit authorizationStarting();
+
     // `verifier` must survive until GetToken — capture a copy by value.
     m_client->Authorize(
         args,
@@ -190,7 +197,8 @@ void DiscordPresenceClient::beginAuthorization() {
                        int32_t /*expiresIn*/,
                        std::string /*scopes*/) {
                     if (!tokenResult.Successful()) {
-                        qWarning() << "[DiscordPresenceClient] Token exchange failed.";
+                        qWarning() << "[DiscordPresenceClient] Token exchange failed:"
+                                   << QString::fromStdString(tokenResult.ToString());
                         m_status = DiscordConnectionStatus::Error;
                         emit connectionStatusChanged(m_status);
                         emit sdkError(QStringLiteral("Discord token exchange failed."));
