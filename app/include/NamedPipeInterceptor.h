@@ -53,12 +53,14 @@ signals:
 
 #ifdef Q_OS_WIN
 private:
-    /// Acceptor loop: repeatedly creates a fresh pipe INSTANCE and waits for a
-    /// client.  Each accepted client is handed to its own serviceClient() thread
-    /// so multiple Discord clients (e.g. RuneLite's built-in plugin AND our own
-    /// Social SDK probe) can be connected simultaneously — the single-instance
-    /// server used to let the first client squat the only slot forever.
-    void workerLoop();
+    /// Acceptor loop for one pipe name (discord-ipc-<pipeIndex>).  Repeatedly
+    /// creates a fresh pipe INSTANCE and waits for a client.  Each accepted client
+    /// is handed to its own serviceClient() thread so multiple Discord clients
+    /// (e.g. RuneLite's built-in plugin AND our own Social SDK probe) can be
+    /// connected simultaneously.  Two of these run — pipeIndex 0 and 1 — so we own
+    /// both discord-ipc-0 and discord-ipc-1 and RuneLite (which scans ipc-0 →
+    /// ipc-1 → …) can never fall through to the real Discord (bounced to ipc-2).
+    void workerLoop(int pipeIndex);
 
     /// Service one connected client (handshake/frames/ping/close) until it
     /// disconnects.  Owns \p pipe: closes it and removes itself from the live
@@ -81,7 +83,7 @@ private:
     /// ipc-0).  Best-effort; logs on failure.
     static void relaunchDiscord();
 
-    std::thread          m_thread;             // acceptor thread (workerLoop)
+    std::thread          m_threads[2];         // acceptor threads: ipc-0, ipc-1
     std::atomic<bool>    m_running{false};
 
     // Concurrency: the acceptor owns m_acceptPipe (the instance currently waiting
@@ -91,13 +93,15 @@ private:
     // acceptor and CancelIoEx()es each client handle to unblock its reader, then
     // joins every thread (each serviceClient closes its own handle on exit).
     std::mutex                m_clientsMutex;
-    HANDLE                    m_acceptPipe{INVALID_HANDLE_VALUE};
+    HANDLE                    m_acceptPipe[2]{INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE};
     std::vector<HANDLE>       m_clientPipes;
     std::vector<std::thread>  m_clientThreads;
 
     bool                 m_autoBounce{true};   // gated off by OMNIPRESENCE_NO_AUTO_BOUNCE
-    bool                 m_bounceTried{false};  // one-shot: never loop-kills Discord
-    bool                 m_relaunchDiscordPending{false}; // restart after we claim ipc-0
+    std::atomic<bool>    m_bounceTried{false};  // one-shot: never loop-kills Discord
+    std::atomic<bool>    m_killDone{false};     // leader signals follower Discord is dead
+    std::atomic<int>     m_claimedCount{0};     // #pipes claimed; relaunch Discord at 2
+    std::atomic<bool>    m_relaunchDiscordPending{false}; // relaunch Discord onto ipc-2
 #endif
 };
 

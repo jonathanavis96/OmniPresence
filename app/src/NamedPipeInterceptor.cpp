@@ -32,7 +32,12 @@ static constexpr const char* READY_JSON =
 // for this client; we still ACK all others (e.g. the Social SDK join session).
 static constexpr const char* RUNELITE_CLIENT_ID = "409416265891971072";
 
-// Probe whether \\.\pipe\discord-ipc-0 already has a server (the real Discord).
+static std::wstring discordPipeName(int idx)
+{
+    return L"\\\\.\\pipe\\discord-ipc-" + std::to_wstring(idx);
+}
+
+// Probe whether \\.\pipe\discord-ipc-<idx> already has a server (the real Discord).
 // We cannot learn this from CreateNamedPipeW: with PIPE_UNLIMITED_INSTANCES it
 // SUCCEEDS as an extra instance when Discord already owns the name, so it never
 // reports ERROR_PIPE_BUSY / ERROR_ACCESS_DENIED in the Discord-first case.  Ask
@@ -40,9 +45,9 @@ static constexpr const char* RUNELITE_CLIENT_ID = "409416265891971072";
 //   • opens                 -> a server exists (Discord); close, send no handshake.
 //   • ERROR_PIPE_BUSY       -> exists but all instances busy -> a server exists.
 //   • ERROR_FILE_NOT_FOUND  -> nobody serves it yet -> we are first, no bounce.
-static bool discordPipeAlreadyServed()
+static bool discordPipeAlreadyServed(int idx)
 {
-    HANDLE h = CreateFileW(L"\\\\.\\pipe\\discord-ipc-0",
+    HANDLE h = CreateFileW(discordPipeName(idx).c_str(),
                            GENERIC_READ | GENERIC_WRITE,
                            0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (h != INVALID_HANDLE_VALUE) {
@@ -71,9 +76,19 @@ void NamedPipeInterceptor::start()
     if (m_running.exchange(true)) {
         return; // already running
     }
-    // Auto-bounce Discord to claim ipc-0 unless explicitly disabled.
+    // Auto-bounce Discord to claim the pipes unless explicitly disabled.
     m_autoBounce = !qEnvironmentVariableIsSet("OMNIPRESENCE_NO_AUTO_BOUNCE");
-    m_thread = std::thread(&NamedPipeInterceptor::workerLoop, this);
+    m_bounceTried.store(false);
+    m_killDone.store(false);
+    m_claimedCount.store(0);
+    m_relaunchDiscordPending.store(false);
+    // Own BOTH discord-ipc-0 AND discord-ipc-1 so RuneLite's built-in plugin
+    // (which scans ipc-0 → ipc-1 → …) can never fall through to the real Discord;
+    // Discord is bounced to ipc-2, which its own clients still find (our presence
+    // uses Discord's cloud SDK, not the local pipe).  Thread 0 is the leader (does
+    // the one-time Discord kill); thread 1 waits for that kill, then claims ipc-1.
+    m_threads[0] = std::thread(&NamedPipeInterceptor::workerLoop, this, 0);
+    m_threads[1] = std::thread(&NamedPipeInterceptor::workerLoop, this, 1);
 }
 
 // ── Discord bounce helpers ─────────────────────────────────────────────────────
@@ -108,8 +123,8 @@ bool NamedPipeInterceptor::killDiscord()
 void NamedPipeInterceptor::relaunchDiscord()
 {
     // Discord's stable launcher is %LOCALAPPDATA%\Discord\Update.exe; it resolves
-    // the latest app-<version> and relaunches.  Since we now own ipc-0, the fresh
-    // Discord falls back to ipc-1 automatically.
+    // the latest app-<version> and relaunches.  Since we now own ipc-0 AND ipc-1,
+    // the fresh Discord falls back to ipc-2 automatically.
     wchar_t* localAppData = nullptr;
     size_t   len          = 0;
     if (_wdupenv_s(&localAppData, &len, L"LOCALAPPDATA") != 0 || !localAppData) {
@@ -136,7 +151,7 @@ void NamedPipeInterceptor::relaunchDiscord()
                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
-        qDebug() << "[NamedPipeInterceptor] Relaunched Discord (will use ipc-1).";
+        qDebug() << "[NamedPipeInterceptor] Relaunched Discord (will use ipc-2).";
     } else {
         qWarning() << "[NamedPipeInterceptor] CreateProcessW(Discord) failed:" << GetLastError()
                    << "— relaunch Discord manually.";
@@ -158,10 +173,12 @@ void NamedPipeInterceptor::stop()
     // it to remove themselves from m_clientPipes without deadlocking.
     {
         std::lock_guard<std::mutex> lock(m_clientsMutex);
-        if (m_acceptPipe != INVALID_HANDLE_VALUE) {
-            DisconnectNamedPipe(m_acceptPipe);
-            CloseHandle(m_acceptPipe);
-            m_acceptPipe = INVALID_HANDLE_VALUE;
+        for (int i = 0; i < 2; ++i) {
+            if (m_acceptPipe[i] != INVALID_HANDLE_VALUE) {
+                DisconnectNamedPipe(m_acceptPipe[i]);
+                CloseHandle(m_acceptPipe[i]);
+                m_acceptPipe[i] = INVALID_HANDLE_VALUE;
+            }
         }
         for (HANDLE h : m_clientPipes) {
             CancelIoEx(h, nullptr);
@@ -169,8 +186,10 @@ void NamedPipeInterceptor::stop()
         }
     }
 
-    if (m_thread.joinable()) {
-        m_thread.join();
+    for (int i = 0; i < 2; ++i) {
+        if (m_threads[i].joinable()) {
+            m_threads[i].join();
+        }
     }
 
     // Acceptor has exited and stopped spawning; join any remaining client threads.
@@ -243,28 +262,40 @@ bool NamedPipeInterceptor::writeFrame(HANDLE pipe, int opcode, const QString& js
 
 // ── Worker loop ───────────────────────────────────────────────────────────────
 
-void NamedPipeInterceptor::workerLoop()
+void NamedPipeInterceptor::workerLoop(int pipeIndex)
 {
-    // ── One-time proactive Discord bounce ────────────────────────────────────
-    // The error-code bounce inside the loop only fires if CreateNamedPipeW
-    // returns ERROR_PIPE_BUSY / ERROR_ACCESS_DENIED.  With PIPE_UNLIMITED_INSTANCES
-    // that call instead SUCCEEDS as an extra instance when Discord already owns
-    // ipc-0, so in the Discord-first case it never fires and we would silently
-    // coexist as a dead second instance that RuneLite never connects to.  Probe
-    // ipc-0 as a client and bounce Discord ONCE so we become the sole owner.
-    // Killing Discord also drops RuneLite's existing connection, forcing its
-    // plugin to reconnect — by then we own ipc-0, so it reconnects to us.
-    if (m_autoBounce && !m_bounceTried && discordPipeAlreadyServed()) {
-        m_bounceTried = true;
-        if (killDiscord()) {
-            qWarning() << "[NamedPipeInterceptor] discord-ipc-0 already served on startup; "
-                          "bounced Discord to claim it "
-                          "(set OMNIPRESENCE_NO_AUTO_BOUNCE=1 to disable).";
-            m_relaunchDiscordPending = true;
-            Sleep(1500); // let Windows release Discord's pipe instances
-        } else {
-            qWarning() << "[NamedPipeInterceptor] discord-ipc-0 already served but no Discord "
-                          "process to bounce; another app owns it — continuing as extra instance.";
+    const std::wstring pname = discordPipeName(pipeIndex);
+    bool counted = false; // has THIS thread counted its first claim yet?
+
+    // ── One-time coordinated Discord bounce (leader = pipe 0) ────────────────
+    // We must own ipc-0 AND ipc-1 as the SOLE server on each.  If Discord already
+    // serves either (it holds ipc-1 from a prior run, or ipc-0 if it launched
+    // first), the leader kills it so both names are free; both threads then claim
+    // their pipe and, once BOTH are claimed, Discord is relaunched onto ipc-2.
+    // CreateNamedPipeW can't tell us Discord is there (PIPE_UNLIMITED_INSTANCES
+    // makes it succeed as a dead extra instance), so we probe as a client.  The
+    // follower waits for the leader's kill before creating its instance so it
+    // never coexists with Discord on ipc-1.
+    if (pipeIndex == 0) {
+        if (m_autoBounce && !m_bounceTried.exchange(true) &&
+            (discordPipeAlreadyServed(0) || discordPipeAlreadyServed(1))) {
+            if (killDiscord()) {
+                qWarning() << "[NamedPipeInterceptor] Discord holds ipc-0/ipc-1; bounced it to "
+                              "claim both (Discord will return on ipc-2) "
+                              "(set OMNIPRESENCE_NO_AUTO_BOUNCE=1 to disable).";
+                m_relaunchDiscordPending.store(true);
+                Sleep(1500); // let Windows release Discord's pipe instances
+            } else {
+                qWarning() << "[NamedPipeInterceptor] ipc-0/ipc-1 served but no Discord process "
+                              "to bounce; another app owns it — continuing as extra instance.";
+            }
+        }
+        m_killDone.store(true); // release the follower
+    } else {
+        // Follower: wait (bounded) until the leader has finished any kill so
+        // Discord has released ipc-1 before we create our instance.
+        for (int i = 0; i < 100 && !m_killDone.load() && m_running.load(); ++i) {
+            Sleep(50);
         }
     }
 
@@ -284,7 +315,7 @@ void NamedPipeInterceptor::workerLoop()
         //   write because RuneLite only reads on its callback timer.
         //   A real out-buffer makes writes return immediately (buffered).
         HANDLE pipe = CreateNamedPipeW(
-            L"\\\\.\\pipe\\discord-ipc-0",
+            pname.c_str(),
             PIPE_ACCESS_DUPLEX,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
             PIPE_UNLIMITED_INSTANCES, // concurrent clients (RuneLite + SDK + …)
@@ -295,34 +326,11 @@ void NamedPipeInterceptor::workerLoop()
         );
 
         if (pipe == INVALID_HANDLE_VALUE) {
-            const DWORD err = GetLastError();
-            if (err == ERROR_PIPE_BUSY || err == ERROR_ACCESS_DENIED) {
-                // Discord already owns ipc-0.  Auto-bounce it ONCE: kill Discord
-                // so it releases the pipe, then (after we claim it below) relaunch
-                // Discord onto ipc-1.  The one-shot m_bounceTried guard guarantees
-                // we never loop-kill Discord if something ELSE holds the pipe.
-                if (m_autoBounce && !m_bounceTried) {
-                    m_bounceTried = true;
-                    qWarning() << "[NamedPipeInterceptor] discord-ipc-0 owned by Discord; "
-                                  "auto-bouncing Discord to claim it "
-                                  "(set OMNIPRESENCE_NO_AUTO_BOUNCE=1 to disable).";
-                    if (killDiscord()) {
-                        m_relaunchDiscordPending = true;
-                        Sleep(1500); // let Windows release the pipe handle
-                        continue;    // retry CreateNamedPipeW immediately
-                    }
-                    qWarning() << "[NamedPipeInterceptor] no Discord process found to terminate; "
-                                  "ipc-0 owner is something else — will keep retrying.";
-                } else if (!m_autoBounce) {
-                    qWarning() << "[NamedPipeInterceptor] discord-ipc-0 already owned; auto-bounce "
-                                  "disabled — quit Discord, then (re)start OmniPresence first.";
-                }
-                // else: already bounced once — fall through to the quiet retry.
-            } else {
-                qWarning() << "[NamedPipeInterceptor] CreateNamedPipeW failed, error:" << err;
-            }
-            // Do not busy-spin.  Back off briefly and try again so that if the
-            // user quits Discord while OmniPresence is running we pick it up.
+            // We hold both ipc-0 and ipc-1 continuously (Discord was bounced to
+            // ipc-2), so Discord can't steal a name mid-session; a failure here is
+            // transient. Back off and retry.
+            qWarning() << "[NamedPipeInterceptor] CreateNamedPipeW(discord-ipc-" << pipeIndex
+                       << ") failed, error:" << GetLastError();
             Sleep(2000);
             continue;
         }
@@ -335,19 +343,23 @@ void NamedPipeInterceptor::workerLoop()
                 CloseHandle(pipe);
                 break;
             }
-            m_acceptPipe = pipe;
+            m_acceptPipe[pipeIndex] = pipe;
         }
 
-        // We just claimed an ipc-0 instance.  If we killed Discord to get here,
-        // bring it back — it will create ipc-1 since we hold ipc-0.  (Only ever
-        // runs on the first instance: m_relaunchDiscordPending is one-shot.)
-        if (m_relaunchDiscordPending) {
-            m_relaunchDiscordPending = false;
-            relaunchDiscord();
+        // Count this thread's FIRST claim.  Once BOTH pipes are held, bring
+        // Discord back — it takes ipc-2 since we now own ipc-0 and ipc-1.
+        // Relaunching only after both are claimed stops Discord from grabbing the
+        // pipe we haven't claimed yet.
+        if (!counted) {
+            counted = true;
+            if (m_claimedCount.fetch_add(1) + 1 == 2 &&
+                m_relaunchDiscordPending.exchange(false)) {
+                relaunchDiscord();
+            }
         }
 
-        qDebug() << "[NamedPipeInterceptor] Listening on \\\\.\\pipe\\discord-ipc-0 "
-                    "(awaiting next client) ...";
+        qDebug() << "[NamedPipeInterceptor] Listening on \\\\.\\pipe\\discord-ipc-"
+                 << pipeIndex << "(awaiting next client) ...";
 
         // ── Wait for a client on THIS instance ───────────────────────────────
         const BOOL connected = ConnectNamedPipe(pipe, nullptr)
@@ -359,9 +371,9 @@ void NamedPipeInterceptor::workerLoop()
         // longer ours to touch.
         {
             std::lock_guard<std::mutex> lock(m_clientsMutex);
-            const bool stillOurs = (m_acceptPipe == pipe);
+            const bool stillOurs = (m_acceptPipe[pipeIndex] == pipe);
             if (stillOurs) {
-                m_acceptPipe = INVALID_HANDLE_VALUE;
+                m_acceptPipe[pipeIndex] = INVALID_HANDLE_VALUE;
             }
 
             if (!m_running.load()) {
