@@ -13,8 +13,39 @@
 #endif
 #include <windows.h>
 #include <psapi.h>
+#include <cstring>
+#include <iterator>
 
 namespace OmniPresence {
+
+namespace {
+
+// UWP host resolution: a UWP app (Calculator, Photos, Store, Settings, …) shows
+// a foreground "ApplicationFrameWindow" owned by ApplicationFrameHost.exe, while
+// the real app lives in a child "Windows.UI.Core.CoreWindow" owned by its OWN
+// process.  We enumerate the frame's children to find that CoreWindow so we can
+// report Calculator.exe instead of ApplicationFrameHost.exe.
+struct UwpChildSearch {
+    DWORD hostPid;   // ApplicationFrameHost.exe pid — the child we want differs
+    HWND  found;
+};
+
+BOOL CALLBACK findUwpAppChild(HWND child, LPARAM lp) {
+    auto* s = reinterpret_cast<UwpChildSearch*>(lp);
+    DWORD childPid = 0;
+    ::GetWindowThreadProcessId(child, &childPid);
+    if (childPid != 0 && childPid != s->hostPid) {
+        wchar_t cls[256] = {};
+        ::GetClassNameW(child, cls, static_cast<int>(std::size(cls)));
+        if (wcscmp(cls, L"Windows.UI.Core.CoreWindow") == 0) {
+            s->found = child;
+            return FALSE; // stop enumerating
+        }
+    }
+    return TRUE; // keep looking
+}
+
+} // namespace
 
 Win32ActiveWindowWatcher::Win32ActiveWindowWatcher(int pollIntervalMs, QObject* parent)
     : ActiveWindowWatcher(parent)
@@ -68,9 +99,28 @@ WindowInfo Win32ActiveWindowWatcher::queryForegroundWindow() const {
 
     WindowInfo info;
 
+    // ── Redirect UWP host frames to the hosted app's process ──────────────────
+    // For a UWP "ApplicationFrameWindow", pid/exe must come from the hosted
+    // CoreWindow child (procHwnd); the human-readable title stays on the frame
+    // (hwnd) and is read below.
+    HWND procHwnd = hwnd;
+    {
+        wchar_t frameCls[256] = {};
+        if (::GetClassNameW(hwnd, frameCls, static_cast<int>(std::size(frameCls))) &&
+            wcscmp(frameCls, L"ApplicationFrameWindow") == 0) {
+            DWORD hostPid = 0;
+            ::GetWindowThreadProcessId(hwnd, &hostPid);
+            UwpChildSearch search{ hostPid, nullptr };
+            ::EnumChildWindows(hwnd, &findUwpAppChild, reinterpret_cast<LPARAM>(&search));
+            if (search.found) {
+                procHwnd = search.found;
+            }
+        }
+    }
+
     // ── PID ───────────────────────────────────────────────────────────────────
     DWORD pid = 0;
-    ::GetWindowThreadProcessId(hwnd, &pid);
+    ::GetWindowThreadProcessId(procHwnd, &pid);
     info.pid = static_cast<uint32_t>(pid);
 
     // ── Executable path & process name ────────────────────────────────────────

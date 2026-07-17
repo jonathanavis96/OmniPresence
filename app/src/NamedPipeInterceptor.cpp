@@ -32,6 +32,26 @@ static constexpr const char* READY_JSON =
 // for this client; we still ACK all others (e.g. the Social SDK join session).
 static constexpr const char* RUNELITE_CLIENT_ID = "409416265891971072";
 
+// Probe whether \\.\pipe\discord-ipc-0 already has a server (the real Discord).
+// We cannot learn this from CreateNamedPipeW: with PIPE_UNLIMITED_INSTANCES it
+// SUCCEEDS as an extra instance when Discord already owns the name, so it never
+// reports ERROR_PIPE_BUSY / ERROR_ACCESS_DENIED in the Discord-first case.  Ask
+// as a client instead:
+//   • opens                 -> a server exists (Discord); close, send no handshake.
+//   • ERROR_PIPE_BUSY       -> exists but all instances busy -> a server exists.
+//   • ERROR_FILE_NOT_FOUND  -> nobody serves it yet -> we are first, no bounce.
+static bool discordPipeAlreadyServed()
+{
+    HANDLE h = CreateFileW(L"\\\\.\\pipe\\discord-ipc-0",
+                           GENERIC_READ | GENERIC_WRITE,
+                           0, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h != INVALID_HANDLE_VALUE) {
+        CloseHandle(h);
+        return true;
+    }
+    return GetLastError() == ERROR_PIPE_BUSY;
+}
+
 // ── Constructor / destructor ──────────────────────────────────────────────────
 
 NamedPipeInterceptor::NamedPipeInterceptor(QObject* parent)
@@ -225,6 +245,29 @@ bool NamedPipeInterceptor::writeFrame(HANDLE pipe, int opcode, const QString& js
 
 void NamedPipeInterceptor::workerLoop()
 {
+    // ── One-time proactive Discord bounce ────────────────────────────────────
+    // The error-code bounce inside the loop only fires if CreateNamedPipeW
+    // returns ERROR_PIPE_BUSY / ERROR_ACCESS_DENIED.  With PIPE_UNLIMITED_INSTANCES
+    // that call instead SUCCEEDS as an extra instance when Discord already owns
+    // ipc-0, so in the Discord-first case it never fires and we would silently
+    // coexist as a dead second instance that RuneLite never connects to.  Probe
+    // ipc-0 as a client and bounce Discord ONCE so we become the sole owner.
+    // Killing Discord also drops RuneLite's existing connection, forcing its
+    // plugin to reconnect — by then we own ipc-0, so it reconnects to us.
+    if (m_autoBounce && !m_bounceTried && discordPipeAlreadyServed()) {
+        m_bounceTried = true;
+        if (killDiscord()) {
+            qWarning() << "[NamedPipeInterceptor] discord-ipc-0 already served on startup; "
+                          "bounced Discord to claim it "
+                          "(set OMNIPRESENCE_NO_AUTO_BOUNCE=1 to disable).";
+            m_relaunchDiscordPending = true;
+            Sleep(1500); // let Windows release Discord's pipe instances
+        } else {
+            qWarning() << "[NamedPipeInterceptor] discord-ipc-0 already served but no Discord "
+                          "process to bounce; another app owns it — continuing as extra instance.";
+        }
+    }
+
     while (m_running.load()) {
         // ── Create a fresh server-side pipe INSTANCE ─────────────────────────
         // PIPE_ACCESS_DUPLEX: we both read (frames) and write (ACKs / READY).

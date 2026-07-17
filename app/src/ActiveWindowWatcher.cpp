@@ -12,7 +12,7 @@ namespace OmniPresence {
 
 std::unique_ptr<ActiveWindowWatcher> createActiveWindowWatcher(QObject* parent) {
 #ifdef _WIN32
-    return std::make_unique<Win32ActiveWindowWatcher>(750, parent);
+    return std::make_unique<Win32ActiveWindowWatcher>(500, parent);
 #else
     return std::make_unique<StubActiveWindowWatcher>(parent);
 #endif
