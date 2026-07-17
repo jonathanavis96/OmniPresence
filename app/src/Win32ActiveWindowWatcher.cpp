@@ -50,7 +50,11 @@ BOOL CALLBACK findUwpAppChild(HWND child, LPARAM lp) {
 Win32ActiveWindowWatcher::Win32ActiveWindowWatcher(int pollIntervalMs, QObject* parent)
     : ActiveWindowWatcher(parent)
     , m_pollIntervalMs(pollIntervalMs)
-    , m_debouncer(2500) // 2.5 s stability window
+    , m_debouncer(500) // short stability window (was 2.5 s). Still debounces
+                       // genuine transients, but commits within ~one 500 ms poll
+                       // so rapid app-switching no longer feels "locked" — the old
+                       // 2.5 s window reset on every switch and never committed
+                       // until focus settled.
 {
     connect(&m_pollTimer, &QTimer::timeout, this, &Win32ActiveWindowWatcher::onPollTimer);
 }
