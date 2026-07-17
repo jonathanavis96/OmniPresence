@@ -183,6 +183,138 @@ private slots:
         const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev);
         QCOMPARE(p.name, QStringLiteral("Coding"));
     }
+
+    // ── Phase 3 (Task 3.2): idle-tier override ──────────────────────────────
+
+    void idleAwayOverridesAnyApp() {
+        // idle >= awaySeconds, ANY app (not RuneLite) -> Away card. App
+        // identity is dropped entirely — no RuneLite rule name/icon survives.
+        RuleSet rules;
+        rules.addRule(osrsRule());
+
+        IntegrationContext integ;
+        WindowInfo win;
+        win.processName = QStringLiteral("chrome.exe");
+
+        IdleConfig idle;
+        idle.enabled      = true;
+        idle.afkSeconds   = 120;
+        idle.awaySeconds  = 600;
+        idle.awayLabel    = QStringLiteral("Away from computer");
+        idle.awayImageKey = QStringLiteral(
+            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png");
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/700, win.processName, idle);
+
+        QCOMPARE(p.name,          idle.awayLabel);
+        QCOMPARE(p.details,       idle.awayLabel);
+        QCOMPARE(p.largeImageKey, idle.awayImageKey);
+        QVERIFY(p.matchedRuleName != QStringLiteral("RuneLite / OSRS"));
+    }
+
+    void idleAfkOverridesWhenRuneliteFocused() {
+        // idle >= afkSeconds (but < awaySeconds) AND RuneLite focused -> AFK,
+        // keeps "OSRS" name + the matched RuneLite rule's icon.
+        RuleSet rules;
+        rules.addRule(osrsRule());   // largeImageKey = "osrs"
+
+        IntegrationContext integ;
+        WindowInfo win;
+        win.processName = QStringLiteral("RuneLite.exe");
+
+        IdleConfig idle;
+        idle.enabled     = true;
+        idle.afkSeconds  = 120;
+        idle.awaySeconds = 600;
+        idle.afkLabel    = QStringLiteral("AFK");
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/150, win.processName, idle);
+
+        QCOMPARE(p.name,          QStringLiteral("OSRS"));
+        QCOMPARE(p.details,       idle.afkLabel);
+        QCOMPARE(p.largeImageKey, QStringLiteral("osrs"));
+    }
+
+    void idleAfkDoesNotFireForNonRuneLite() {
+        // idle >= afkSeconds but the focused app is NOT RuneLite -> no AFK
+        // tier; falls through to normal (generic) presence.
+        RuleSet rules;
+        rules.addRule(osrsRule());
+
+        IntegrationContext integ;
+        WindowInfo win;
+        win.processName = QStringLiteral("chrome.exe");
+
+        IdleConfig idle;
+        idle.enabled     = true;
+        idle.afkSeconds  = 120;
+        idle.awaySeconds = 600;
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/150, win.processName, idle);
+
+        QCOMPARE(p.name, QStringLiteral("Google Chrome"));   // generic presence, no AFK
+    }
+
+    void idleBelowThresholdNeverOverrides() {
+        // idle < afkSeconds -> normal presence, even with RuneLite focused.
+        RuleSet rules;
+        rules.addRule(osrsRule());
+
+        IntegrationContext integ;
+        integ.update(QStringLiteral("runelite"), QJsonObject{
+            {QStringLiteral("activity"), QStringLiteral("Runecraft")},
+            {QStringLiteral("location"), QStringLiteral("Dark Altar")},
+        });
+
+        WindowInfo win;
+        win.processName = QStringLiteral("runelite.exe");
+        win.windowTitle = QStringLiteral("RuneLite");
+
+        IdleConfig idle;
+        idle.enabled     = true;
+        idle.afkSeconds  = 120;
+        idle.awaySeconds = 600;
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/30, win.processName, idle);
+
+        QCOMPARE(p.name,    QStringLiteral("OSRS"));
+        QCOMPARE(p.details, QStringLiteral("Training Runecrafting"));
+    }
+
+    void idleDisabledNeverOverrides() {
+        // enabled == false -> idle never overrides, no matter how large idleSeconds is.
+        RuleSet rules;
+        rules.addRule(osrsRule());
+
+        IntegrationContext integ;
+        integ.update(QStringLiteral("runelite"), QJsonObject{
+            {QStringLiteral("activity"), QStringLiteral("Runecraft")},
+            {QStringLiteral("location"), QStringLiteral("Dark Altar")},
+        });
+
+        WindowInfo win;
+        win.processName = QStringLiteral("runelite.exe");
+        win.windowTitle = QStringLiteral("RuneLite");
+
+        IdleConfig idle;   // enabled defaults to false
+        idle.afkSeconds  = 120;
+        idle.awaySeconds = 600;
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/9999, win.processName, idle);
+
+        QCOMPARE(p.name,    QStringLiteral("OSRS"));
+        QCOMPARE(p.details, QStringLiteral("Training Runecrafting"));
+    }
 };
 
 QTEST_MAIN(TestRuleEngineRender)

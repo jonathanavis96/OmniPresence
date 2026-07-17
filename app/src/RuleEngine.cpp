@@ -1,6 +1,7 @@
 // RuleEngine.cpp — Deterministic priority-based presence evaluation.
 //
 // Priority order (spec):
+//  0. Input-idle override (AFK / Away) → awayPresence / afkPresence
 //  1. Manual pause / private override  → private fallback
 //  2. Manual pinned presence           → pinnedPresence
 //  3. Deep integration context match   → rule with matchIntegrationSource set
@@ -17,6 +18,25 @@
 
 namespace OmniPresence {
 
+namespace {
+
+// Reused as the AFK-tier icon: prefer whatever largeImageKey the user's own
+// RuneLite rule is configured with (single source of truth — follows the
+// user if they change the icon), falling back to the shipped default URL
+// only if no RuneLite rule exists at all.
+QString runeliteIconKey(const RuleSet& rules) {
+    for (const Rule& r : rules.rules()) {
+        if (r.matchProcessName.compare(QStringLiteral("RuneLite.exe"), Qt::CaseInsensitive) == 0 ||
+            r.matchIntegrationSource == QLatin1String("runelite")) {
+            if (!r.largeImageKey.isEmpty()) return r.largeImageKey;
+        }
+    }
+    return QStringLiteral(
+        "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/osrs.png");
+}
+
+} // namespace
+
 // ── Private fallback ──────────────────────────────────────────────────────────
 
 PresencePayload RuleEngine::privateFallback() {
@@ -31,6 +51,40 @@ PresencePayload RuleEngine::privateFallback() {
     p.privacyLevel      = PrivacyLevel::Private;
     p.isPrivateFallback = true;
     p.matchedRuleName   = QStringLiteral("(private fallback)");
+    return p;
+}
+
+// ── Idle-tier payloads ──────────────────────────────────────────────────────────
+
+PresencePayload RuleEngine::awayPresence(const IdleConfig& idle) {
+    // Any app, idle >= awaySeconds — deliberately drops app identity entirely
+    // (no largeImageKey/name from the focused window survives here).
+    PresencePayload p;
+    p.name              = idle.awayLabel;
+    p.details           = idle.awayLabel;
+    p.state             = QString();
+    p.activityType      = ActivityType::Playing;
+    p.privacyLevel      = PrivacyLevel::Public;
+    p.isPrivateFallback = false;
+    p.statusDisplay     = StatusDisplay::Name;
+    p.largeImageKey     = idle.awayImageKey;
+    p.matchedRuleName   = QStringLiteral("(idle — away)");
+    return p;
+}
+
+PresencePayload RuleEngine::afkPresence(const IdleConfig& idle, const QString& largeImageKey) {
+    // RuneLite focused, idle >= afkSeconds — keeps the OSRS icon/name, but the
+    // details line is replaced with the AFK label (skill/location are hidden).
+    PresencePayload p;
+    p.name              = QStringLiteral("OSRS");
+    p.details           = idle.afkLabel;
+    p.state             = QString();
+    p.activityType      = ActivityType::Playing;
+    p.privacyLevel      = PrivacyLevel::Public;
+    p.isPrivateFallback = false;
+    p.statusDisplay     = StatusDisplay::Name;
+    p.largeImageKey     = largeImageKey;
+    p.matchedRuleName   = QStringLiteral("(idle — AFK)");
     return p;
 }
 
@@ -83,8 +137,27 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
                                      const IntegrationContext&  integrations,
                                      const RuleSet&             rules,
                                      const ManualOverrideState& overrideState,
-                                     const PresencePayload&     previousPayload) const
+                                     const PresencePayload&     previousPayload,
+                                     quint64                    idleSeconds,
+                                     const QString&              focusedProcessName,
+                                     const IdleConfig&           idle) const
 {
+    // Priority 0 — input-idle override (AFK / Away-from-computer). Highest
+    // priority in the whole chain — takes over even ahead of manual pause /
+    // private mode, so presence always reflects "nobody is at the keyboard"
+    // the instant the threshold is crossed, regardless of other state. Higher
+    // threshold (awaySeconds) is checked FIRST so Away always wins over AFK
+    // when both are satisfied simultaneously (e.g. idle 20 min: away, not AFK).
+    if (idle.enabled) {
+        if (idleSeconds >= idle.awaySeconds) {
+            return awayPresence(idle);
+        }
+        if (idleSeconds >= idle.afkSeconds &&
+            focusedProcessName.compare(QStringLiteral("RuneLite.exe"), Qt::CaseInsensitive) == 0) {
+            return afkPresence(idle, runeliteIconKey(rules));
+        }
+    }
+
     // Priority 1 — manual pause or global private mode.
     if (overrideState.paused || overrideState.privateMode) {
         return privateFallback();

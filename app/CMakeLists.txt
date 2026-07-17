@@ -25,6 +25,7 @@ set(OMNIPRESENCE_SOURCES
     src/DiscordPresenceClient.cpp
     src/LocalContextServer.cpp
     src/NamedPipeInterceptor.cpp
+    src/InputIdleMonitor.cpp
     src/ConfigStore.cpp
     src/AppController.cpp
 )
@@ -46,6 +47,7 @@ set(OMNIPRESENCE_HEADERS
     include/DiscordPresenceClient.h
     include/LocalContextServer.h
     include/NamedPipeInterceptor.h
+    include/InputIdleMonitor.h
     include/ConfigStore.h
     include/AppController.h
 )

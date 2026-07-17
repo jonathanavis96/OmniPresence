@@ -59,6 +59,40 @@ static AppSettings settingsFromJson(const QJsonObject& obj) {
     return s;
 }
 
+// ── IdleConfig JSON helpers (Phase 3) ───────────────────────────────────────────
+
+// Shipped default — matches config/omnipresence.json / omnipresence.example.json
+// and the assets/icons/away.png staged for the "Away from computer" card.
+// OmniPresence uses full raw.githubusercontent URLs (not Discord portal asset
+// keys) as largeImageKey, same as every other rule's icon.
+static const QString kDefaultAwayImageKey = QStringLiteral(
+    "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png");
+
+static QJsonObject idleConfigToJson(const IdleConfig& cfg) {
+    QJsonObject obj;
+    obj[QStringLiteral("enabled")]      = cfg.enabled;
+    obj[QStringLiteral("afkSeconds")]   = static_cast<double>(cfg.afkSeconds);
+    obj[QStringLiteral("awaySeconds")]  = static_cast<double>(cfg.awaySeconds);
+    obj[QStringLiteral("afkLabel")]     = cfg.afkLabel;
+    obj[QStringLiteral("awayLabel")]    = cfg.awayLabel;
+    obj[QStringLiteral("awayImageKey")] = cfg.awayImageKey;
+    return obj;
+}
+
+// Any field missing from the JSON (including the whole "idle" object being
+// absent — obj is then default-constructed/empty) falls back to the shipped
+// defaults below, matching config/omnipresence.example.json's "idle" block.
+static IdleConfig idleConfigFromJson(const QJsonObject& obj) {
+    IdleConfig cfg;
+    cfg.enabled      = obj[QStringLiteral("enabled")].toBool(true);
+    cfg.afkSeconds   = static_cast<quint64>(obj[QStringLiteral("afkSeconds")].toDouble(120));
+    cfg.awaySeconds  = static_cast<quint64>(obj[QStringLiteral("awaySeconds")].toDouble(600));
+    cfg.afkLabel     = obj[QStringLiteral("afkLabel")].toString(QStringLiteral("AFK"));
+    cfg.awayLabel    = obj[QStringLiteral("awayLabel")].toString(QStringLiteral("Away from computer"));
+    cfg.awayImageKey = obj[QStringLiteral("awayImageKey")].toString(kDefaultAwayImageKey);
+    return cfg;
+}
+
 // ── ConfigStore ───────────────────────────────────────────────────────────────
 
 ConfigStore::ConfigStore(QObject* parent)
@@ -85,6 +119,12 @@ bool ConfigStore::load() {
     QFile file(m_configPath);
     if (!file.exists()) {
         qDebug() << "[ConfigStore] Config not found at" << m_configPath << "— using defaults.";
+        // No JSON to parse, but IdleConfig's own struct default has
+        // enabled=false (so a bare-evaluate() caller that forgets to load
+        // config never accidentally gets idle overrides) — that is NOT the
+        // shipped default. Route through idleConfigFromJson(empty) so a
+        // fresh install still gets enabled=true, 120 s / 600 s, etc.
+        m_idleConfig = idleConfigFromJson(QJsonObject());
         emit configLoaded();
         return true;   // Fresh install — defaults are fine.
     }
@@ -147,6 +187,9 @@ bool ConfigStore::parseJson(const QByteArray& data) {
             ? RuleSet::fromJson(root[QStringLiteral("ruleSet")].toObject())
             : RuleSet::fromJson(root);
     migrateRuleTemplates();
+    // Idle-tier (AFK / Away-from-computer) config. Optional top-level object —
+    // any/all missing fields default (see idleConfigFromJson).
+    m_idleConfig = idleConfigFromJson(root.value(QStringLiteral("idle")).toObject());
     // Art-asset metadata (key -> hover text). Optional top-level object.
     m_assetKeys.clear();
     const QJsonObject assets = root.value(QStringLiteral("assetKeys")).toObject();
@@ -190,6 +233,7 @@ QByteArray ConfigStore::serialiseJson() const {
     // and reloads cleanly.
     QJsonObject root = settingsToJson(m_settings);
     root[QStringLiteral("rules")] = m_ruleSet.toJson().value(QStringLiteral("rules"));
+    root[QStringLiteral("idle")] = idleConfigToJson(m_idleConfig);
     QJsonObject assets;
     for (auto it = m_assetKeys.constBegin(); it != m_assetKeys.constEnd(); ++it)
         assets[it.key()] = it.value();

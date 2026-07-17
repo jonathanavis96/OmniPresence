@@ -4,6 +4,7 @@
 #include "DiscordPresenceClient.h"
 #include "LocalContextServer.h"
 #include "NamedPipeInterceptor.h"
+#include "InputIdleMonitor.h"
 #include "ConfigStore.h"
 #include "TemplateEngine.h"
 #include <QTimer>
@@ -93,6 +94,7 @@ AppController::AppController(QObject* parent)
                                                            LocalContextServer::DEFAULT_PORT,
                                                            this))
     , m_runeliteInterceptor(std::make_unique<NamedPipeInterceptor>(this))
+    , m_inputIdle(std::make_unique<InputIdleMonitor>(this))
 {
     m_watcher = createActiveWindowWatcher(this);
 
@@ -156,6 +158,14 @@ AppController::AppController(QObject* parent)
     m_runeliteKeepAliveTimer->setInterval(30000);
     connect(m_runeliteKeepAliveTimer, &QTimer::timeout,
             this, &AppController::onRuneliteKeepAliveTick);
+
+    // ── Idle-tier tick (5 s) ───────────────────────────────────────────────────
+    // Drives time-based AFK/Away transitions without waiting for a window or
+    // integration event (see onIdleTick / RuleEngine's idle-tier override).
+    m_idleTickTimer = new QTimer(this);
+    m_idleTickTimer->setInterval(5000);
+    connect(m_idleTickTimer, &QTimer::timeout,
+            this, &AppController::onIdleTick);
 }
 
 AppController::~AppController() = default;
@@ -176,6 +186,7 @@ void AppController::initialise() {
     m_watcher->start();
     m_discordCallbackTimer->start();
     m_runeliteKeepAliveTimer->start();
+    m_idleTickTimer->start();
 }
 
 // ── Property getters ──────────────────────────────────────────────────────────
@@ -203,6 +214,18 @@ QString AppController::discordStatus() const {
 
 QString AppController::discordAppId() const {
     return m_configStore->settings().discordAppId;
+}
+
+bool AppController::idleEnabled() const noexcept {
+    return m_configStore->idleConfig().enabled;
+}
+
+int AppController::idleAfkMinutes() const noexcept {
+    return static_cast<int>(m_configStore->idleConfig().afkSeconds / 60);
+}
+
+int AppController::idleAwayMinutes() const noexcept {
+    return static_cast<int>(m_configStore->idleConfig().awaySeconds / 60);
 }
 
 QString AppController::lastUpdateTime() const {
@@ -279,6 +302,14 @@ void AppController::onRuneliteKeepAliveTick() {
     }
 }
 
+void AppController::onIdleTick() {
+    // Nothing else needs to change here — evaluateAndPublish() always reads
+    // the live idle seconds + config-backed IdleConfig, and its isSamePresence
+    // gate prevents this from spamming Discord while nothing has crossed a
+    // threshold.
+    evaluateAndPublish();
+}
+
 // ── Core evaluation ───────────────────────────────────────────────────────────
 
 void AppController::evaluateAndPublish() {
@@ -287,7 +318,10 @@ void AppController::evaluateAndPublish() {
         m_integrationContext,
         m_configStore->ruleSet(),
         m_overrideState,
-        m_lastPublishedPresence);
+        m_lastPublishedPresence,
+        m_inputIdle->idleSeconds(),
+        m_currentWindow.processName,
+        m_configStore->idleConfig());
 
     m_currentPresence = candidate;
     emit presenceChanged();
@@ -530,6 +564,40 @@ void AppController::saveConfig() {
 
 void AppController::reloadConfig() {
     m_configStore->load();
+    evaluateAndPublish();
+}
+
+// ── Idle / AFK settings (Phase 3) ───────────────────────────────────────────
+
+void AppController::setIdleEnabled(bool enabled) {
+    IdleConfig cfg = m_configStore->idleConfig();
+    if (cfg.enabled == enabled) return;
+    cfg.enabled = enabled;
+    m_configStore->idleConfig() = cfg;
+    m_configStore->save();
+    emit idleConfigChanged();
+    evaluateAndPublish();
+}
+
+void AppController::setIdleAfkMinutes(int minutes) {
+    const quint64 seconds = static_cast<quint64>(minutes > 0 ? minutes : 0) * 60;
+    IdleConfig cfg = m_configStore->idleConfig();
+    if (cfg.afkSeconds == seconds) return;
+    cfg.afkSeconds = seconds;
+    m_configStore->idleConfig() = cfg;
+    m_configStore->save();
+    emit idleConfigChanged();
+    evaluateAndPublish();
+}
+
+void AppController::setIdleAwayMinutes(int minutes) {
+    const quint64 seconds = static_cast<quint64>(minutes > 0 ? minutes : 0) * 60;
+    IdleConfig cfg = m_configStore->idleConfig();
+    if (cfg.awaySeconds == seconds) return;
+    cfg.awaySeconds = seconds;
+    m_configStore->idleConfig() = cfg;
+    m_configStore->save();
+    emit idleConfigChanged();
     evaluateAndPublish();
 }
 

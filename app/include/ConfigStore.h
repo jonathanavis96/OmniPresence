@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Rule.h"
+#include "RuleEngine.h"   // IdleConfig
 #include <QObject>
 #include <QString>
 #include <QMap>
@@ -38,6 +39,11 @@ public:
     [[nodiscard]] RuleSet&    ruleSet()    noexcept { return m_ruleSet;  }
     [[nodiscard]] AppSettings& settings()  noexcept { return m_settings; }
 
+    /// Idle-tier (AFK / Away-from-computer) config — parsed from the "idle"
+    /// object in config JSON, defaulting any missing field (see ConfigStore.cpp).
+    [[nodiscard]] const IdleConfig& idleConfig() const noexcept { return m_idleConfig; }
+    [[nodiscard]] IdleConfig&       idleConfig()       noexcept { return m_idleConfig; }
+
     /// Art-asset metadata: image key -> hover text. The local PNG path is
     /// derived from ArtStore::localPathForKey(key), not stored here.
     [[nodiscard]] const QMap<QString, QString>& assetKeys() const noexcept { return m_assetKeys; }
@@ -63,6 +69,7 @@ private:
 
     RuleSet     m_ruleSet;
     AppSettings m_settings;
+    IdleConfig  m_idleConfig;
     QMap<QString, QString> m_assetKeys;
     QString     m_configPath;
 };

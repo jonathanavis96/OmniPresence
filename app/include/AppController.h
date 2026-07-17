@@ -27,6 +27,7 @@ class ActiveWindowWatcher;
 class DiscordPresenceClient;
 class LocalContextServer;
 class NamedPipeInterceptor;
+class InputIdleMonitor;
 class ConfigStore;
 
 class AppController : public QObject {
@@ -58,6 +59,11 @@ class AppController : public QObject {
     Q_PROPERTY(bool     capturing           READ capturing           NOTIFY captureStateChanged)
     Q_PROPERTY(int      captureCountdown    READ captureCountdown     NOTIFY captureStateChanged)
 
+    // ── Idle / AFK settings (Phase 3) ─────────────────────────────────────────
+    Q_PROPERTY(bool idleEnabled     READ idleEnabled     WRITE setIdleEnabled     NOTIFY idleConfigChanged)
+    Q_PROPERTY(int  idleAfkMinutes  READ idleAfkMinutes  WRITE setIdleAfkMinutes  NOTIFY idleConfigChanged)
+    Q_PROPERTY(int  idleAwayMinutes READ idleAwayMinutes WRITE setIdleAwayMinutes NOTIFY idleConfigChanged)
+
 public:
     explicit AppController(QObject* parent = nullptr);
     ~AppController() override;
@@ -87,6 +93,11 @@ public:
     bool     capturing()          const noexcept { return m_capturing;        }
     int      captureCountdown()   const noexcept { return m_captureCountdown; }
 
+    // ── Idle / AFK settings getters (minutes in the UI, seconds in storage) ───
+    bool     idleEnabled()        const noexcept;
+    int      idleAfkMinutes()     const noexcept;
+    int      idleAwayMinutes()    const noexcept;
+
     // ── QML-invokable actions ─────────────────────────────────────────────────
     Q_INVOKABLE void captureCurrentWindow();
     /// Start a short countdown, then snapshot whichever window the user focused.
@@ -101,6 +112,15 @@ public:
     Q_INVOKABLE void resume();
     Q_INVOKABLE void saveConfig();
     Q_INVOKABLE void reloadConfig();
+
+    // ── Idle / AFK settings (Phase 3) ─────────────────────────────────────────
+    /// Master enable toggle for the idle-tier override. Persists immediately
+    /// and applies live — the ~5 s idle tick re-reads the config-backed value.
+    Q_INVOKABLE void setIdleEnabled(bool enabled);
+    /// AFK threshold in MINUTES (stored as seconds). RuneLite-focused only.
+    Q_INVOKABLE void setIdleAfkMinutes(int minutes);
+    /// Away-from-computer threshold in MINUTES (stored as seconds). Any app.
+    Q_INVOKABLE void setIdleAwayMinutes(int minutes);
 
     // ── Rule CRUD bridge (QML) ────────────────────────────────────────────────
     /// [{index,name,enabled,priority}] in config (insertion) order.
@@ -147,6 +167,7 @@ signals:
     void pauseChanged();
     void captureStateChanged();
     void rulesChanged();
+    void idleConfigChanged();
 
 private slots:
     void onActiveWindowChanged(const OmniPresence::WindowInfo& info);
@@ -158,6 +179,12 @@ private slots:
     /// window — its Discord-IPC source only sends on change, so a steady session
     /// would otherwise let the payload go stale and publish a blank name.
     void onRuneliteKeepAliveTick();
+    /// ~5 s tick driving time-based idle-tier (AFK/Away) transitions — without
+    /// this, idle crossing a threshold would never re-publish since nothing
+    /// else triggers evaluateAndPublish() while the window/integration state
+    /// is otherwise unchanged. The isSamePresence change-gate in
+    /// evaluateAndPublish() prevents this from spamming Discord.
+    void onIdleTick();
 
 private:
     void evaluateAndPublish();
@@ -182,6 +209,7 @@ private:
     std::unique_ptr<DiscordPresenceClient>  m_discordClient;
     std::unique_ptr<LocalContextServer>     m_contextServer;
     std::unique_ptr<NamedPipeInterceptor>   m_runeliteInterceptor;
+    std::unique_ptr<InputIdleMonitor>       m_inputIdle;
     std::unique_ptr<ConfigStore>            m_configStore;
 
     IntegrationContext   m_integrationContext;
@@ -197,6 +225,7 @@ private:
     class QTimer*   m_discordCallbackTimer{nullptr};
     class QTimer*   m_captureTimer{nullptr};
     class QTimer*   m_runeliteKeepAliveTimer{nullptr};
+    class QTimer*   m_idleTickTimer{nullptr};
     bool            m_capturing{false};
     int             m_captureCountdown{0};
 };

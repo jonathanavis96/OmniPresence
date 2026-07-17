@@ -12,6 +12,14 @@
     "allowChatGptTitles": false,
     "whitelistDomains": []
   },
+  "idle": {
+    "enabled": true,
+    "afkSeconds": 120,
+    "awaySeconds": 600,
+    "afkLabel": "AFK",
+    "awayLabel": "Away from computer",
+    "awayImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png"
+  },
   "assets": {},
   "rules": [
     {

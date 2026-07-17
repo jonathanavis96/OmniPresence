@@ -56,6 +56,38 @@ Page {
                 }
             }
 
+            // ── Idle / AFK presence ─────────────────────────────────────────────
+            SectionCard {
+                Layout.fillWidth: true
+                cardTitle: "Idle / AFK Presence"
+
+                ColumnLayout {
+                    spacing: 12
+
+                    ToggleRow {
+                        label:       "Enable idle detection"
+                        description: "Switch to AFK (while RuneLite is focused) / Away from computer after a period of no keyboard or mouse input. Duration only — no key or mouse content is ever read."
+                        checked:     AppController.idleEnabled
+                        onToggled:   (v) => AppController.setIdleEnabled(v)
+                        accentColor: "#5865f2"
+                    }
+
+                    Rectangle { height: 1; Layout.fillWidth: true; color: "#3f4147" }
+
+                    MinutesRow {
+                        label:       "AFK after (RuneLite focused)"
+                        minutes:     AppController.idleAfkMinutes
+                        onCommitted: (m) => AppController.setIdleAfkMinutes(m)
+                    }
+
+                    MinutesRow {
+                        label:       "Away from computer after (any app)"
+                        minutes:     AppController.idleAwayMinutes
+                        onCommitted: (m) => AppController.setIdleAwayMinutes(m)
+                    }
+                }
+            }
+
             // ── Browser privacy (owned by the extension) ──────────────────────
             SectionCard {
                 Layout.fillWidth: true
@@ -152,6 +184,41 @@ Page {
                 Layout.fillWidth: true
                 visible: description !== ""
             }
+        }
+    }
+
+    component MinutesRow: RowLayout {
+        property string label: ""
+        property int    minutes: 0
+        signal committed(int minutes)
+
+        spacing: 12
+        Layout.fillWidth: true
+
+        Text {
+            text: label
+            color: "#dbdee1"
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+
+        SpinBox {
+            id: sb
+            from: 1
+            to: 240
+            value: minutes
+            editable: true
+            // valueModified fires only on user interaction (not on the
+            // `value: minutes` binding update), so this can't feedback-loop
+            // with AppController's config-backed property.
+            onValueModified: parent.committed(value)
+        }
+
+        Text {
+            text: "min"
+            color: "#949ba4"
+            font.pixelSize: 12
         }
     }
 }
