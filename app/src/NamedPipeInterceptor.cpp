@@ -14,6 +14,7 @@
 #ifdef Q_OS_WIN
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <cstdlib>
 #include <string>
@@ -57,6 +58,111 @@ static bool discordPipeAlreadyServed(int idx)
     return GetLastError() == ERROR_PIPE_BUSY;
 }
 
+// The Discord user id our impersonator's READY_JSON reports. Any OTHER id coming
+// back from an ipc-0 READY means a real Discord server is coexisting on the name.
+static constexpr const char* OMNIPRESENCE_READY_USER_ID = "1045800378228281345";
+
+// Bounded overlapped read/write on \p h so a silent or misbehaving peer can never
+// wedge the caller (the watchdog thread, and therefore stop()). Returns true only
+// if exactly \p n bytes transferred within \p waitMs. \p h MUST be opened with
+// FILE_FLAG_OVERLAPPED.
+static bool pipeIoTimed(HANDLE h, bool write, void* buf, DWORD n, DWORD waitMs)
+{
+    OVERLAPPED ov{};
+    ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!ov.hEvent) {
+        return false;
+    }
+    DWORD done = 0;
+    BOOL  ok   = write ? WriteFile(h, buf, n, nullptr, &ov)
+                       : ReadFile(h, buf, n, nullptr, &ov);
+    bool result = false;
+    if (ok) {
+        result = GetOverlappedResult(h, &ov, &done, FALSE) && done == n;
+    } else if (GetLastError() == ERROR_IO_PENDING) {
+        if (WaitForSingleObject(ov.hEvent, waitMs) == WAIT_OBJECT_0) {
+            result = GetOverlappedResult(h, &ov, &done, FALSE) && done == n;
+        } else {
+            CancelIoEx(h, &ov);
+            GetOverlappedResult(h, &ov, &done, TRUE); // drain the cancelled op
+        }
+    }
+    CloseHandle(ov.hEvent);
+    return result;
+}
+
+// Definitively detect a RIVAL Discord server coexisting on discord-ipc-0.
+//
+// discordPipeAlreadyServed() cannot do this once WE serve ipc-0: a client probe
+// connects to whichever instance answers — including our own — so it reports
+// "served" unconditionally. Instead, connect, complete the Discord handshake, read
+// the READY frame, and inspect data.user.id: our impersonator always returns
+// OMNIPRESENCE_READY_USER_ID (see READY_JSON); a real Discord returns the logged-in
+// user's id. The OS round-robins client connections across coexisting instances,
+// so one probe may land on our own instance even when Discord coexists — we probe a
+// few times and report a rival if ANY probe returns a foreign id. When Discord is
+// correctly parked on ipc-2 (not coexisting), every probe hits us, so this returns
+// false and the watchdog never fires — no thrashing. All I/O is timeout-bounded.
+static bool discordRivalOnIpc0()
+{
+    constexpr int   kAttempts  = 5;
+    constexpr DWORD kWaitMs    = 500;
+    const std::wstring name    = discordPipeName(0);
+
+    for (int i = 0; i < kAttempts; ++i) {
+        HANDLE h = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
+                               nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+        if (h == INVALID_HANDLE_VALUE) {
+            continue; // couldn't connect this attempt — no evidence either way
+        }
+
+        // Handshake (opcode 0). Use RuneLite's real app id so BOTH our impersonator
+        // and the real Discord answer with a READY (an invalid id could make real
+        // Discord reply with an error and hide the coexistence).
+        const QByteArray hs =
+            QByteArray(R"({"v":1,"client_id":")") + RUNELITE_CLIENT_ID + R"("})";
+        const qint32 op0  = 0;
+        const qint32 hlen = static_cast<qint32>(hs.size());
+        std::vector<char> frame;
+        frame.reserve(8 + hs.size());
+        frame.insert(frame.end(), reinterpret_cast<const char*>(&op0),
+                     reinterpret_cast<const char*>(&op0) + 4);
+        frame.insert(frame.end(), reinterpret_cast<const char*>(&hlen),
+                     reinterpret_cast<const char*>(&hlen) + 4);
+        frame.insert(frame.end(), hs.begin(), hs.end());
+
+        bool foreign = false;
+        if (pipeIoTimed(h, /*write*/true, frame.data(),
+                        static_cast<DWORD>(frame.size()), kWaitMs)) {
+            char hdr[8];
+            if (pipeIoTimed(h, /*write*/false, hdr, 8, kWaitMs)) {
+                qint32 rlen = 0;
+                std::memcpy(&rlen, hdr + 4, 4);
+                if (rlen > 0 && rlen < 65536) {
+                    std::vector<char> payload(static_cast<size_t>(rlen));
+                    if (pipeIoTimed(h, /*write*/false, payload.data(),
+                                    static_cast<DWORD>(rlen), kWaitMs)) {
+                        const QString uid =
+                            QJsonDocument::fromJson(QByteArray(payload.data(), rlen))
+                                .object().value("data").toObject()
+                                .value("user").toObject().value("id").toString();
+                        if (!uid.isEmpty() &&
+                            uid != QLatin1String(OMNIPRESENCE_READY_USER_ID)) {
+                            foreign = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        CloseHandle(h);
+        if (foreign) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // ── Constructor / destructor ──────────────────────────────────────────────────
 
 NamedPipeInterceptor::NamedPipeInterceptor(QObject* parent)
@@ -82,6 +188,7 @@ void NamedPipeInterceptor::start()
     m_killDone.store(false);
     m_claimedCount.store(0);
     m_relaunchDiscordPending.store(false);
+    m_lastRebounceTicks.store(0); // no watchdog re-bounce yet this session
     // Own BOTH discord-ipc-0 AND discord-ipc-1 so RuneLite's built-in plugin
     // (which scans ipc-0 → ipc-1 → …) can never fall through to the real Discord;
     // Discord is bounced to ipc-2, which its own clients still find (our presence
@@ -89,6 +196,10 @@ void NamedPipeInterceptor::start()
     // the one-time Discord kill); thread 1 waits for that kill, then claims ipc-1.
     m_threads[0] = std::thread(&NamedPipeInterceptor::workerLoop, this, 0);
     m_threads[1] = std::thread(&NamedPipeInterceptor::workerLoop, this, 1);
+    // Self-heal watchdog (Task 1.3): the two workers above only bounce Discord
+    // ONCE at startup. This third thread keeps watching for the rest of the
+    // session so a Discord that starts/restarts later still gets bounced.
+    m_watchdog = std::thread(&NamedPipeInterceptor::watchdogLoop, this);
 }
 
 // ── Discord bounce helpers ─────────────────────────────────────────────────────
@@ -181,10 +292,111 @@ void NamedPipeInterceptor::relaunchDiscord()
     }
 }
 
+// ── Self-heal watchdog (Task 1.3) ─────────────────────────────────────────────
+// The startup bounce in workerLoop(0) is a ONE-SHOT: it only fires the instant
+// thread 0 starts. It does not protect the rest of the session. If Discord was
+// not running yet at startup, or the user quits+relaunches it later, Discord
+// will re-claim discord-ipc-0 as an extra PIPE_UNLIMITED_INSTANCES server and
+// RuneLite's built-in plugin can race onto it again — this is the same failure
+// mode Task 1.2 fixed at startup, just recurring mid-session. The root cause is
+// structural: owning a pipe NAME does not evict a rival SERVER process on that
+// name; only killing the rival process does. This thread keeps checking for the
+// rest of the session so that recurrence is caught and healed automatically.
+//
+// Deliberately does NOT consult m_bounceTried (that latch only exists to make
+// the startup gate in workerLoop(0) fire once) — this loop is gated solely by
+// its own m_lastRebounceTicks cooldown, so it can re-bounce as many times as
+// Discord actually reappears, without thrashing.
+void NamedPipeInterceptor::watchdogLoop()
+{
+    constexpr int kPollStepMs     = 500;   // granularity for a responsive stop()
+    constexpr int kWakeIntervalMs = 10000; // ~10 s between coexistence checks
+    const auto    kCooldown       = std::chrono::seconds(30); // min gap between re-bounces
+
+    while (m_running.load()) {
+        // Sleep in short steps (instead of one Sleep(10000)) so stop() clearing
+        // m_running is noticed within kPollStepMs, not up to 10 s late.
+        for (int slept = 0; slept < kWakeIntervalMs && m_running.load(); slept += kPollStepMs) {
+            Sleep(kPollStepMs);
+        }
+        if (!m_running.load()) {
+            break;
+        }
+        if (!m_autoBounce) {
+            continue; // auto-bounce disabled (OMNIPRESENCE_NO_AUTO_BOUNCE) — never self-heal
+        }
+
+        const bool discordUp = isDiscordProcessRunning();
+        // Coexistence signal: a Discord process is running AND a foreign (real
+        // Discord) READY comes back from ipc-0. discordRivalOnIpc0() inspects the
+        // READY identity because a plain client probe (discordPipeAlreadyServed)
+        // would always be answered by OUR OWN instance and thus always report
+        // "served" — which would make this watchdog kill Discord every cooldown
+        // forever even when Discord is correctly parked on ipc-2. Only probe when
+        // Discord is actually up (cheap gate before the handshake round-trips).
+        const bool coexisting = discordUp && discordRivalOnIpc0();
+
+        if (!coexisting) {
+            // Discord absent, or correctly on ipc-2 (every probe hit us) — nothing
+            // to heal. No log here: this path runs every ~10 s for the whole
+            // session and must stay quiet.
+            continue;
+        }
+        // A foreign READY identity came back from ipc-0 → a real Discord is
+        // coexisting there. The cooldown check + re-bounce logs below announce
+        // the outcome (skip vs heal).
+
+        const auto now  = std::chrono::steady_clock::now();
+        const auto last = std::chrono::steady_clock::time_point(
+            std::chrono::steady_clock::duration(m_lastRebounceTicks.load()));
+        if (now - last < kCooldown) {
+            qInfo() << "[NamedPipeInterceptor] watchdog: Discord coexisting on ipc-0 again, "
+                       "but still within the re-bounce cooldown; skipping to avoid thrashing.";
+            continue;
+        }
+
+        if (!m_running.load()) {
+            break; // stop() raced us while we were deciding; don't act during shutdown
+        }
+
+        qWarning() << "[NamedPipeInterceptor] watchdog: Discord (re)appeared and is serving "
+                      "ipc-0 again; re-bouncing to reclaim sole ownership (set "
+                      "OMNIPRESENCE_NO_AUTO_BOUNCE=1 to disable self-heal).";
+        if (killDiscord()) {
+            // Stamp the cooldown immediately on a successful kill (not after the
+            // relaunch below) so a slow relaunch can't itself provoke another
+            // watchdog wake-up before the cooldown window has properly started.
+            m_lastRebounceTicks.store(now.time_since_epoch().count());
+            Sleep(1500); // let Windows release Discord's pipe instances, as at startup
+            // The acceptor threads (workerLoop) are already parked in
+            // ConnectNamedPipe on their existing ipc-0/ipc-1 instances — they
+            // won't re-run their one-time m_claimedCount==2 relaunch trigger for
+            // a mid-session kill. So THIS thread relaunches Discord directly
+            // rather than setting m_relaunchDiscordPending (which nothing would
+            // ever consume again).
+            relaunchDiscord();
+            qInfo() << "[NamedPipeInterceptor] watchdog: re-bounce complete, Discord relaunched "
+                       "(will use ipc-2).";
+        } else {
+            qWarning() << "[NamedPipeInterceptor] watchdog: Discord process seen but kill "
+                          "failed; RuneLite may reach real Discord — check permissions.";
+        }
+    }
+}
+
 void NamedPipeInterceptor::stop()
 {
     if (!m_running.exchange(false)) {
         return; // already stopped
+    }
+
+    // The watchdog touches no pipe handles — it only polls m_running (checked
+    // every 500 ms, see watchdogLoop()) and calls isDiscordProcessRunning() /
+    // killDiscord() / relaunchDiscord(), all of which are self-contained
+    // process-snapshot calls. Join it first and independently of the
+    // acceptor/client pipe-handle cleanup below.
+    if (m_watchdog.joinable()) {
+        m_watchdog.join();
     }
 
     // Unblock everyone, but do NOT close client handles here — each serviceClient

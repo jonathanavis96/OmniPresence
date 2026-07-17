@@ -14,6 +14,15 @@
 //   pipe, and relaunches Discord (which falls back to ipc-1).  This removes the
 //   manual "start OmniPresence before Discord" requirement.  Disable by setting
 //   the env var OMNIPRESENCE_NO_AUTO_BOUNCE=1 (then it just logs guidance).
+//
+// IMPORTANT — self-heal (mid-session):
+//   The startup bounce above only fires once.  If Discord is not running yet at
+//   startup, or the user quits/relaunches it later, Discord will re-claim
+//   discord-ipc-0 as an extra PIPE_UNLIMITED_INSTANCES server and RuneLite's
+//   built-in plugin can race onto it again — owning the pipe NAME does not evict
+//   a rival SERVER process on that name.  A background watchdog thread (see
+//   watchdogLoop()) re-checks every ~10 s and re-bounces (cooldown ~30 s) if
+//   Discord has reappeared and is coexisting on ipc-0.
 #pragma once
 
 #include <QObject>
@@ -21,6 +30,7 @@
 
 #ifdef Q_OS_WIN
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -62,6 +72,16 @@ private:
     /// ipc-1 → …) can never fall through to the real Discord (bounced to ipc-2).
     void workerLoop(int pipeIndex);
 
+    /// Self-heal watchdog: periodically re-checks (every ~10 s, in 500 ms steps
+    /// so stop() is responsive) whether Discord has (re)appeared and reclaimed
+    /// discord-ipc-0 as a coexisting server. Owning the pipe NAME does not evict
+    /// a rival SERVER on that name — only killing the rival process does — so if
+    /// Discord starts/restarts after us, RuneLite can race onto it again exactly
+    /// like the original Task 1.2 bug. The startup bounce (m_bounceTried) is a
+    /// one-shot; this loop is what handles every re-appearance for the rest of
+    /// the session, gated only by its own cooldown (m_lastRebounceTicks).
+    void watchdogLoop();
+
     /// Service one connected client (handshake/frames/ping/close) until it
     /// disconnects.  Owns \p pipe: closes it and removes itself from the live
     /// client list on exit.  Runs on its own std::thread.
@@ -91,6 +111,7 @@ private:
     static void relaunchDiscord();
 
     std::thread          m_threads[2];         // acceptor threads: ipc-0, ipc-1
+    std::thread          m_watchdog;           // self-heal re-bounce thread (Task 1.3)
     std::atomic<bool>    m_running{false};
 
     // Concurrency: the acceptor owns m_acceptPipe (the instance currently waiting
@@ -109,6 +130,12 @@ private:
     std::atomic<bool>    m_killDone{false};     // leader signals follower Discord is dead
     std::atomic<int>     m_claimedCount{0};     // #pipes claimed; relaunch Discord at 2
     std::atomic<bool>    m_relaunchDiscordPending{false}; // relaunch Discord onto ipc-2
+
+    // Watchdog re-bounce cooldown (Task 1.3), stored as raw steady_clock ticks
+    // (std::chrono::steady_clock::rep) so it fits in a lock-free atomic; 0 means
+    // "never re-bounced yet" and is far enough in the past that the first
+    // watchdog re-bounce is never blocked by the cooldown.
+    std::atomic<std::chrono::steady_clock::rep> m_lastRebounceTicks{0};
 #endif
 };
 
