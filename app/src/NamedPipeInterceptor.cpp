@@ -93,6 +93,29 @@ void NamedPipeInterceptor::start()
 
 // ── Discord bounce helpers ─────────────────────────────────────────────────────
 
+bool NamedPipeInterceptor::isDiscordProcessRunning()
+{
+    bool found = false;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) {
+        qWarning() << "[NamedPipeInterceptor] CreateToolhelp32Snapshot (probe) failed:"
+                   << GetLastError();
+        return false;
+    }
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, L"Discord.exe") == 0) {
+                found = true;
+                break;
+            }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    return found;
+}
+
 bool NamedPipeInterceptor::killDiscord()
 {
     bool killedAny = false;
@@ -277,18 +300,35 @@ void NamedPipeInterceptor::workerLoop(int pipeIndex)
     // follower waits for the leader's kill before creating its instance so it
     // never coexists with Discord on ipc-1.
     if (pipeIndex == 0) {
-        if (m_autoBounce && !m_bounceTried.exchange(true) &&
-            (discordPipeAlreadyServed(0) || discordPipeAlreadyServed(1))) {
+        // Decide the one-time Discord bounce, logging every input so the decision
+        // is never silent again — a silent skip here hid a whole-session steal:
+        // Discord coexisted on ipc-0 as an extra PIPE_UNLIMITED_INSTANCES server
+        // and RuneLite's plugin raced onto it. Bounce on DISCORD PROCESS PRESENCE,
+        // not the pipe probe: discordPipeAlreadyServed() false-negatives (timing +
+        // Discord's extra ipc-0 instance is invisible as "served"), whereas a
+        // running Discord.exe reliably means it will claim ipc-0. The pipe probe is
+        // kept for diagnostics only.
+        const bool served0   = discordPipeAlreadyServed(0);
+        const bool served1   = discordPipeAlreadyServed(1);
+        const bool discordUp = isDiscordProcessRunning();
+        qInfo().nospace()
+            << "[NamedPipeInterceptor] bounce probe: autoBounce=" << m_autoBounce
+            << " served(ipc-0)=" << served0 << " served(ipc-1)=" << served1
+            << " discordProcRunning=" << discordUp;
+        if (m_autoBounce && discordUp && !m_bounceTried.exchange(true)) {
             if (killDiscord()) {
-                qWarning() << "[NamedPipeInterceptor] Discord holds ipc-0/ipc-1; bounced it to "
-                              "claim both (Discord will return on ipc-2) "
+                qWarning() << "[NamedPipeInterceptor] Discord running; bounced it to claim "
+                              "ipc-0/ipc-1 as the SOLE server (Discord returns on ipc-2) "
                               "(set OMNIPRESENCE_NO_AUTO_BOUNCE=1 to disable).";
                 m_relaunchDiscordPending.store(true);
                 Sleep(1500); // let Windows release Discord's pipe instances
             } else {
-                qWarning() << "[NamedPipeInterceptor] ipc-0/ipc-1 served but no Discord process "
-                              "to bounce; another app owns it — continuing as extra instance.";
+                qWarning() << "[NamedPipeInterceptor] Discord process seen but kill failed; "
+                              "RuneLite may reach real Discord — check permissions.";
             }
+        } else if (m_autoBounce && !discordUp) {
+            qInfo() << "[NamedPipeInterceptor] no Discord process at startup; nothing to bounce "
+                       "yet (self-heal re-bounce will handle a later Discord launch).";
         }
         m_killDone.store(true); // release the follower
     } else {

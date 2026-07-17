@@ -79,6 +79,13 @@ private:
     /// Discord process was actually terminated (i.e. a relaunch is warranted).
     static bool killDiscord();
 
+    /// True if any Discord.exe process is currently running.  A running Discord is
+    /// the reliable signal that it will (re)claim discord-ipc-0 — the pipe probe
+    /// (discordPipeAlreadyServed) false-negatives because PIPE_UNLIMITED_INSTANCES
+    /// lets Discord coexist as an invisible extra ipc-0 instance, which let
+    /// RuneLite's connections race onto Discord and steal the presence.
+    static bool isDiscordProcessRunning();
+
     /// Relaunch Discord via its updater (it falls back to ipc-1 since we now own
     /// ipc-0).  Best-effort; logs on failure.
     static void relaunchDiscord();
