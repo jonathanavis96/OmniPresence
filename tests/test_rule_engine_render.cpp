@@ -26,6 +26,26 @@ static Rule runeLightRule() {
     return r;
 }
 
+// Phase 2 (Task 2.2): the RuneLite rule as shipped in config/omnipresence.json
+// — constant "OSRS" name (never a dangling "OSRS – "), skill-labelled details,
+// bare location state.
+static Rule osrsRule() {
+    Rule r;
+    r.id                     = QStringLiteral("osrs");
+    r.name                   = QStringLiteral("RuneLite / OSRS");
+    r.enabled                = true;
+    r.priority               = 10;
+    r.matchProcessName       = QStringLiteral("RuneLite.exe");
+    r.matchIntegrationSource = QStringLiteral("runelite");
+    r.activityType           = ActivityType::Playing;
+    r.activityNameTemplate   = QStringLiteral("OSRS");
+    r.detailsTemplate        = QStringLiteral("{{runelite.activity}}");
+    r.stateTemplate          = QStringLiteral("{{runelite.location}}");
+    r.largeImageKey          = QStringLiteral("osrs");
+    r.privacyLevel           = PrivacyLevel::Public;
+    return r;
+}
+
 static Rule terminalRule() {
     Rule r;
     r.id                     = QStringLiteral("term");
@@ -87,6 +107,54 @@ private slots:
         const PresencePayload p = engine.evaluate(win, integ, rules, override, prev);
 
         QCOMPARE(p.name, QStringLiteral("RuneLight"));   // not "RuneLight – "
+    }
+
+    void osrsSkillLabelledDetailsAndConstantName() {
+        RuleSet rules;
+        rules.addRule(osrsRule());
+
+        IntegrationContext integ;
+        integ.update(QStringLiteral("runelite"), QJsonObject{
+            {QStringLiteral("activity"), QStringLiteral("Runecraft")},
+            {QStringLiteral("location"), QStringLiteral("Dark Altar")},
+        });
+
+        WindowInfo win;
+        win.processName = QStringLiteral("runelite.exe");
+        win.windowTitle = QStringLiteral("RuneLite");
+
+        RuleEngine engine;
+        ManualOverrideState override;
+        PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, override, prev);
+
+        QCOMPARE(p.name,    QStringLiteral("OSRS"));
+        QCOMPARE(p.details, QStringLiteral("Training Runecrafting"));
+        QCOMPARE(p.state,   QStringLiteral("Dark Altar"));
+    }
+
+    void osrsEmptyActivityAndLocationNeverDangles() {
+        RuleSet rules;
+        rules.addRule(osrsRule());
+
+        IntegrationContext integ;   // fresh runelite payload, but no activity/location yet
+        integ.update(QStringLiteral("runelite"), QJsonObject{
+            {QStringLiteral("activity"), QString()},
+            {QStringLiteral("location"), QString()},
+        });
+
+        WindowInfo win;
+        win.processName = QStringLiteral("runelite.exe");
+        win.windowTitle = QStringLiteral("RuneLite");
+
+        RuleEngine engine;
+        ManualOverrideState override;
+        PresencePayload prev;
+        const PresencePayload p = engine.evaluate(win, integ, rules, override, prev);
+
+        QCOMPARE(p.name, QStringLiteral("OSRS"));   // not "OSRS –" / "OSRS - "
+        QVERIFY(!p.name.contains(QLatin1Char('–')));
+        QVERIFY(!p.name.contains(QLatin1Char('-')));
     }
 
     void terminalMainLineUsesTabTitle() {

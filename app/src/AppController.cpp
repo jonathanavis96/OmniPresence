@@ -230,9 +230,21 @@ void AppController::onRuneliteActivityCaptured(const QString& activity,
 {
     // Called via queued connection from the NamedPipeInterceptor worker thread;
     // safe to touch IntegrationContext here (main event loop).
+    //
+    // The built-in plugin only sends SET_ACTIVITY on change, so a refocus or a
+    // momentary capture gap can arrive here with an empty activity/location
+    // even though the previous non-empty reading is still the best estimate
+    // of what's happening in-game. Retain the last non-empty value per field
+    // instead of overwriting it with "" (which would otherwise wipe the skill
+    // down to a bare "OSRS"). A genuinely new, non-empty capture always wins,
+    // so this self-corrects the moment the plugin sends fresh data.
+    const IntegrationPayload* prev = m_integrationContext.get(QStringLiteral("runelite"));
+    const QString retainedActivity = prev ? prev->field(QStringLiteral("activity")) : QString();
+    const QString retainedLocation = prev ? prev->field(QStringLiteral("location")) : QString();
+
     QJsonObject o;
-    o[QStringLiteral("activity")] = activity;
-    o[QStringLiteral("location")] = location;
+    o[QStringLiteral("activity")] = activity.isEmpty() ? retainedActivity : activity;
+    o[QStringLiteral("location")] = location.isEmpty() ? retainedLocation : location;
     m_integrationContext.update(QStringLiteral("runelite"), o);
     evaluateAndPublish();
 }
@@ -249,6 +261,11 @@ void AppController::onRuneliteKeepAliveTick() {
     // window the last reading is still the best estimate of what you're doing, so
     // re-stamp it to "now". Detection mirrors RuleEngine::matchRule (the dev
     // client runs as java.exe, recognised by window title).
+    //
+    // refresh() below only touches receivedAt, never `data` — so it re-stamps
+    // whatever activity/location is currently stored, including any retained
+    // (last-non-empty) fields from onRuneliteActivityCaptured() above. Those
+    // retained fields are preserved for free; nothing further to do here.
     const QString pn = m_currentWindow.processName.toLower();
     const QString wt = m_currentWindow.windowTitle.toLower();
     const bool runeliteFocused =

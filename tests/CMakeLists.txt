@@ -33,11 +33,21 @@ add_executable(test_template_engine
     test_template_engine.cpp
     ${OMNI_TEST_SRC}/TemplateEngine.cpp
     ${OMNI_TEST_SRC}/IntegrationContext.cpp
+    ${OMNI_TEST_SRC}/SkillLabel.cpp
 )
 target_include_directories(test_template_engine PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
 target_link_libraries(test_template_engine PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME test_template_engine COMMAND test_template_engine)
 omni_make_test_selfcontained(test_template_engine)
+
+add_executable(test_skill_label
+    test_skill_label.cpp
+    ${OMNI_TEST_SRC}/SkillLabel.cpp
+)
+target_include_directories(test_skill_label PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
+target_link_libraries(test_skill_label PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME test_skill_label COMMAND test_skill_label)
+omni_make_test_selfcontained(test_skill_label)
 
 add_executable(test_art_store
     test_art_store.cpp
@@ -64,6 +74,7 @@ add_executable(test_rule_engine_render
     ${OMNI_TEST_SRC}/RuleEngine.cpp
     ${OMNI_TEST_SRC}/TemplateEngine.cpp
     ${OMNI_TEST_SRC}/IntegrationContext.cpp
+    ${OMNI_TEST_SRC}/SkillLabel.cpp
     ${OMNI_TEST_SRC}/Rule.cpp
     ${OMNI_TEST_SRC}/PresencePayload.cpp
 )

@@ -7,6 +7,9 @@
 //   {{vscode.workspace}}
 //   {{runelite.activity}}  {{runelite.target}}  {{runelite.skill}}
 //   {{runelite.location}}  {{runelite.confidence}}
+//   ({{runelite.activity}} is routed through omni::skillLabel() — see
+//   SkillLabel.h — so a recognised OSRS skill renders as "Training {Skill}";
+//   non-skill activity passes through verbatim.)
 //
 // Fallback syntax:
 //   {{terminal.repo or vscode.workspace}}  — first non-empty value wins.

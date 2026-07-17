@@ -2,6 +2,7 @@
 #include "TemplateEngine.h"
 #include "WindowInfo.h"
 #include "IntegrationContext.h"
+#include "SkillLabel.h"
 #include <QRegularExpression>
 #include <QStringList>
 
@@ -56,7 +57,11 @@ TemplateContext TemplateEngine::buildContext(const WindowInfo& window,
     ctx[QStringLiteral("vscode.workspace")] = integrations.vscodeWorkspace();
 
     // RuneLite
-    ctx[QStringLiteral("runelite.activity")]   = integrations.runeliteActivity();
+    // runelite.activity is routed through omni::skillLabel so a recognised OSRS
+    // skill (e.g. the built-in Discord plugin's "Training: Mining") renders as
+    // "Training Mining"/"Training Runecrafting"; non-skill activity (bosses,
+    // minigames) passes through verbatim.
+    ctx[QStringLiteral("runelite.activity")]   = omni::skillLabel(integrations.runeliteActivity());
     ctx[QStringLiteral("runelite.target")]     = integrations.runeliteTarget();
     ctx[QStringLiteral("runelite.skill")]      = integrations.runeliteSkill();
     ctx[QStringLiteral("runelite.location")]   = integrations.runeliteLocation();
