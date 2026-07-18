@@ -855,6 +855,15 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
     QHttpPart filePart;
     filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
                        QStringLiteral("form-data; name=\"fileToUpload\"; filename=\"%1\"").arg(info.fileName()));
+    // catbox 500s a file part with no Content-Type; curl sends one, so mirror it.
+    // Map the common image extensions; fall back to octet-stream like curl does.
+    const QString ext = info.suffix().toLower();
+    const QString mime = ext == QLatin1String("png")  ? QStringLiteral("image/png")
+                       : ext == QLatin1String("jpg") || ext == QLatin1String("jpeg") ? QStringLiteral("image/jpeg")
+                       : ext == QLatin1String("gif")  ? QStringLiteral("image/gif")
+                       : ext == QLatin1String("webp") ? QStringLiteral("image/webp")
+                       : QStringLiteral("application/octet-stream");
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, mime);
     file->setParent(multiPart);          // multiPart owns the file lifetime
     filePart.setBodyDevice(file);
     multiPart->append(filePart);
@@ -866,14 +875,16 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
     const QString fileName = info.fileName();
     connect(reply, &QNetworkReply::finished, this, [this, reply, presetIndex, fileName]() {
         reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            emit customUploadFinished(false, QStringLiteral("Upload failed: %1").arg(reply->errorString()));
-            return;
-        }
-        const QString url = QString::fromUtf8(reply->readAll()).trimmed();
-        if (!url.startsWith(QLatin1String("https://")) && !url.startsWith(QLatin1String("http://"))) {
-            // catbox returns a plain error string (not a URL) on rejection.
-            emit customUploadFinished(false, QStringLiteral("Host rejected the upload: %1").arg(url.left(120)));
+        const QString body = QString::fromUtf8(reply->readAll()).trimmed();
+        const QString url  = body;   // catbox's success body IS the direct URL
+        const bool looksLikeUrl = url.startsWith(QLatin1String("https://"))
+                               || url.startsWith(QLatin1String("http://"));
+
+        if (!looksLikeUrl) {
+            // Surface the real reason: prefer catbox's response body (it often
+            // carries a human error string), else the transport error string.
+            const QString detail = body.isEmpty() ? reply->errorString() : body.left(160);
+            emit customUploadFinished(false, QStringLiteral("Upload failed: %1").arg(detail));
             return;
         }
 

@@ -297,6 +297,11 @@ Page {
                         model: ["Playing", "Listening", "Watching", "Competing"]
                         currentIndex: Math.max(0, model.indexOf(root.current.activityType || "Playing"))
                         onActivated: root.setField("activityType", model[currentIndex])
+                        contentItem: Text {
+                            text: activityCombo.displayText
+                            color: "#dbdee1"; font.pixelSize: 13
+                            leftPadding: 8; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
+                        }
                     }
 
                     // 4 — Single-mode: which preset is active
@@ -366,6 +371,11 @@ Page {
                                 onActivated: {
                                     var item = model[currentIndex]
                                     if (item) root.setField("largeImageKey", item.url)
+                                }
+                                contentItem: Text {
+                                    text: libraryCombo.displayText
+                                    color: "#dbdee1"; font.pixelSize: 13
+                                    leftPadding: 8; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
                                 }
                             }
                         }
