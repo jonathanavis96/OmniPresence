@@ -363,7 +363,7 @@ Page {
                     spacing: 12
                     Button {
                         text: "Save"
-                        onClicked: { AppController.saveRules(); uploadHint.visible = false }
+                        onClicked: AppController.saveRules()
                         background: Rectangle { radius: 6; color: parent.hovered ? "#4752c4" : "#5865f2" }
                         contentItem: Text { text: parent.text; color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         implicitWidth: 100; implicitHeight: 36
