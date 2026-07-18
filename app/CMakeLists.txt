@@ -97,6 +97,7 @@ qt_add_qml_module(omnipresence
         qml/Dashboard.qml
         qml/CapturePage.qml
         qml/RulesPage.qml
+        qml/CustomPage.qml
         qml/PreviewPage.qml
         qml/PrivacyPage.qml
         qml/LogsPage.qml

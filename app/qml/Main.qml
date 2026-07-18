@@ -63,6 +63,7 @@ ApplicationWindow {
                         { label: "Dashboard",    page: "Dashboard.qml",    comp: pgDashboard },
                         { label: "Capture",      page: "CapturePage.qml",  comp: pgCapture   },
                         { label: "Rules",        page: "RulesPage.qml",    comp: pgRules     },
+                        { label: "Custom",       page: "CustomPage.qml",   comp: pgCustom    },
                         { label: "Preview",      page: "PreviewPage.qml",  comp: pgPreview   },
                         { label: "Logs",         page: "LogsPage.qml",     comp: pgLogs      },
                         { label: "Privacy",      page: "PrivacyPage.qml",  comp: pgPrivacy   },
@@ -143,6 +144,7 @@ ApplicationWindow {
     Component { id: pgDashboard; Dashboard {} }
     Component { id: pgCapture;   CapturePage {} }
     Component { id: pgRules;     RulesPage {} }
+    Component { id: pgCustom;    CustomPage {} }
     Component { id: pgPreview;   PreviewPage {} }
     Component { id: pgLogs;      LogsPage {} }
     Component { id: pgPrivacy;   PrivacyPage {} }
