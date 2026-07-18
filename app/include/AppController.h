@@ -21,6 +21,10 @@
 #include <QStringList>
 #include <memory>
 
+// Qt classes live in the global namespace — forward-declare here (not inside
+// namespace OmniPresence, which would create a distinct incomplete type).
+class QNetworkAccessManager;
+
 namespace OmniPresence {
 
 class ActiveWindowWatcher;
@@ -154,6 +158,11 @@ public:
     Q_INVOKABLE void         reorderCustomPreset(int from, int to);
     /// Reusable image library ([{label,url}]) offered as an icon dropdown.
     Q_INVOKABLE QVariantList customImageLibrary() const;
+    /// Upload a local image to catbox.moe (anonymous, no key); on success set it
+    /// as preset `presetIndex`'s largeImageKey and append it to the image
+    /// library. Async — emits customUploadFinished(ok, message) when done. The
+    /// URL text field and library dropdown remain available as fallbacks.
+    Q_INVOKABLE void uploadPresetImage(int presetIndex, const QString& localPath);
 
     // ── Rule CRUD bridge (QML) ────────────────────────────────────────────────
     /// [{index,name,enabled,priority}] in config (insertion) order.
@@ -202,6 +211,9 @@ signals:
     void rulesChanged();
     void idleConfigChanged();
     void customChanged();
+    /// Emitted when an uploadPresetImage() call finishes. `ok` false => message
+    /// carries the error for the UI; the preset's URL field stays editable.
+    void customUploadFinished(bool ok, const QString& message);
 
 private slots:
     void onActiveWindowChanged(const OmniPresence::WindowInfo& info);
@@ -278,6 +290,7 @@ private:
     class QTimer*   m_idleTickTimer{nullptr};
     class QTimer*   m_customFrameTimer{nullptr};
     int             m_customFrameIndex{0};   ///< Position within cycleIndices().
+    QNetworkAccessManager* m_netManager{nullptr};   ///< catbox uploads (global ::type).
     bool            m_capturing{false};
     int             m_captureCountdown{0};
 };

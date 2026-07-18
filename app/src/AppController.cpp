@@ -2,6 +2,12 @@
 #include "AppController.h"
 #include "ActiveWindowWatcher.h"
 #include <algorithm>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QHttpMultiPart>
+#include <QHttpPart>
+#include <QFileInfo>
 #include "DiscordPresenceClient.h"
 #include "LocalContextServer.h"
 #include "NamedPipeInterceptor.h"
@@ -805,6 +811,76 @@ QVariantList AppController::customImageLibrary() const {
     for (const CustomImageAsset& a : m_configStore->customConfig().imageLibrary)
         out.append(QVariantMap{{QStringLiteral("label"), a.label}, {QStringLiteral("url"), a.url}});
     return out;
+}
+
+void AppController::uploadPresetImage(int presetIndex, const QString& localPath) {
+    // Validate the target preset and file up-front so we never fire a network
+    // request we can't use the result of.
+    if (presetIndex < 0 || presetIndex >= m_configStore->customConfig().presets.size()) {
+        emit customUploadFinished(false, QStringLiteral("No preset selected."));
+        return;
+    }
+    QFileInfo info(localPath);
+    if (!info.exists() || !info.isFile()) {
+        emit customUploadFinished(false, QStringLiteral("File not found: %1").arg(localPath));
+        return;
+    }
+
+    QFile* file = new QFile(info.absoluteFilePath());
+    if (!file->open(QIODevice::ReadOnly)) {
+        emit customUploadFinished(false, QStringLiteral("Could not open %1").arg(info.fileName()));
+        delete file;
+        return;
+    }
+
+    if (!m_netManager) m_netManager = new QNetworkAccessManager(this);
+
+    // catbox.moe anonymous upload: multipart POST, reqtype=fileupload +
+    // fileToUpload; the response body is the direct file URL (no API key).
+    auto* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+    QHttpPart reqTypePart;
+    reqTypePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                          QStringLiteral("form-data; name=\"reqtype\""));
+    reqTypePart.setBody(QByteArrayLiteral("fileupload"));
+    multiPart->append(reqTypePart);
+
+    QHttpPart filePart;
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QStringLiteral("form-data; name=\"fileToUpload\"; filename=\"%1\"").arg(info.fileName()));
+    file->setParent(multiPart);          // multiPart owns the file lifetime
+    filePart.setBodyDevice(file);
+    multiPart->append(filePart);
+
+    QNetworkRequest request(QUrl(QStringLiteral("https://catbox.moe/user/api.php")));
+    QNetworkReply* reply = m_netManager->post(request, multiPart);
+    multiPart->setParent(reply);          // reply owns the multiPart
+
+    const QString fileName = info.fileName();
+    connect(reply, &QNetworkReply::finished, this, [this, reply, presetIndex, fileName]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit customUploadFinished(false, QStringLiteral("Upload failed: %1").arg(reply->errorString()));
+            return;
+        }
+        const QString url = QString::fromUtf8(reply->readAll()).trimmed();
+        if (!url.startsWith(QLatin1String("https://")) && !url.startsWith(QLatin1String("http://"))) {
+            // catbox returns a plain error string (not a URL) on rejection.
+            emit customUploadFinished(false, QStringLiteral("Host rejected the upload: %1").arg(url.left(120)));
+            return;
+        }
+
+        // The preset list may have changed while the upload was in flight.
+        CustomOverrideConfig& cfg = m_configStore->customConfig();
+        if (presetIndex < 0 || presetIndex >= cfg.presets.size()) {
+            emit customUploadFinished(false, QStringLiteral("Preset no longer exists — copy this URL: %1").arg(url));
+            return;
+        }
+        cfg.presets[presetIndex].largeImageKey = url;
+        cfg.imageLibrary.append(CustomImageAsset{fileName, url});
+        commitCustomChange();             // persist + refresh the page (icon updates)
+        emit customUploadFinished(true, url);
+    });
 }
 
 // ── Art sources + available context (Task 5) ───────────────────────────────────
