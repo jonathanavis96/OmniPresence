@@ -30,7 +30,11 @@ std::optional<PresencePayload> CustomOverrideConfig::resolve(int index) const {
 QList<int> CustomOverrideConfig::cycleIndices() const {
     QList<int> out;
     for (int i = 0; i < presets.size(); ++i) {
-        if (presets.at(i).includeInCycle) out.append(i);
+        // A blank-name preset resolve()s to nothing, so including it in the cycle
+        // would leave one frame with no override and fall back to normal rules
+        // (new presets default includeInCycle=true and start unnamed). Skip them.
+        if (presets.at(i).includeInCycle && !presets.at(i).name.trimmed().isEmpty())
+            out.append(i);
     }
     return out;
 }

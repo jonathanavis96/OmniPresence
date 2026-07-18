@@ -203,6 +203,22 @@ private slots:
         QCOMPARE(idx.at(0), 0);
         QCOMPARE(idx.at(1), 2);
     }
+
+    // A blank-name preset must be dropped from the cycle even when includeInCycle
+    // is set — otherwise its frame resolves to nothing and the override blinks
+    // back to normal rules (new presets start unnamed + included).
+    void customCycleIndicesSkipsBlankName() {
+        CustomOverrideConfig cfg;
+        CustomPreset a;     a.name = QStringLiteral("a"); a.includeInCycle = true;
+        CustomPreset blank; blank.name = QStringLiteral("  "); blank.includeInCycle = true;
+        CustomPreset c;     c.name = QStringLiteral("c"); c.includeInCycle = true;
+        cfg.presets << a << blank << c;
+
+        const QList<int> idx = cfg.cycleIndices();
+        QCOMPARE(idx.size(), 2);
+        QCOMPARE(idx.at(0), 0);
+        QCOMPARE(idx.at(1), 2);   // the blank preset at 1 is skipped
+    }
 };
 
 QTEST_MAIN(TestConfigAssets)
