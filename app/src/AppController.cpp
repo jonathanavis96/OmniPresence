@@ -122,6 +122,17 @@ AppController::AppController(QObject* parent)
                 if (status == DiscordConnectionStatus::Connected) {
                     m_runeliteInterceptor->start();
                 }
+                // On a real disconnect or error, release discord-ipc-0/1 so the
+                // interceptor's watchdog stops bouncing Discord and RuneLite's
+                // built-in plugin can reach the real Discord IPC again.  stop() is
+                // idempotent and a no-op if we never started (e.g. an init-time
+                // Error).  A transient network blip surfaces as Reconnecting →
+                // Connecting (see DiscordPresenceClient status mapping), NOT
+                // Disconnected, so this does not thrash start()/stop().
+                else if (status == DiscordConnectionStatus::Disconnected ||
+                         status == DiscordConnectionStatus::Error) {
+                    m_runeliteInterceptor->stop();
+                }
                 emit discordStatusChanged();
             });
 
