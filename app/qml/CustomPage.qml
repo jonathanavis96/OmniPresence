@@ -251,6 +251,7 @@ Page {
                         Layout.fillWidth: true
                         text: root.current.label || ""
                         placeholderText: "e.g. Working, AFK, Streaming"
+                        placeholderTextColor: "#6d6f78"
                         onTextEdited: root.setField("label", text)
                         color: "#dbdee1"
                         background: Rectangle { radius: 4; color: "#1e1f22" }
@@ -262,6 +263,7 @@ Page {
                         Layout.fillWidth: true
                         text: root.current.name || ""
                         placeholderText: "e.g. hello"
+                        placeholderTextColor: "#6d6f78"
                         onTextEdited: root.setField("name", text)
                         color: "#dbdee1"
                         background: Rectangle { radius: 4; color: "#1e1f22" }
@@ -362,6 +364,7 @@ Page {
                                 Layout.fillWidth: true
                                 text: root.current.largeImageText || ""
                                 placeholderText: "Icon name (shown on hover in Discord)"
+                                placeholderTextColor: "#6d6f78"
                                 onEditingFinished: root.setField("largeImageText", text)
                                 color: "#dbdee1"
                                 background: Rectangle { radius: 4; color: "#1e1f22" }
@@ -370,6 +373,7 @@ Page {
                                 Layout.fillWidth: true
                                 text: root.current.largeImageKey || ""
                                 placeholderText: "https://…/icon.png  (or drag an image onto the box)"
+                                placeholderTextColor: "#6d6f78"
                                 onEditingFinished: root.setField("largeImageKey", text)
                                 color: "#dbdee1"
                                 background: Rectangle { radius: 4; color: "#1e1f22" }

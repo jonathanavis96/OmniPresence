@@ -788,8 +788,17 @@ void AppController::updateCustomPresetField(int index, const QString& field, con
     applyCustomPresetField(cfg.presets[index], field, value);
     // Setting a preset's icon URL adds it to the shared library so it can be
     // picked on other presets.
-    if (field == QLatin1String("largeImageKey"))
+    if (field == QLatin1String("largeImageKey")) {
         addImageToLibraryIfNew(value.toString());
+    } else if (field == QLatin1String("largeImageText")) {
+        // Naming the icon renames its library entry, so the library shows the
+        // name you gave the photo rather than the raw filename.
+        const QString name = value.toString().trimmed();
+        const QString key  = cfg.presets[index].largeImageKey;
+        if (!name.isEmpty() && !key.isEmpty())
+            for (CustomImageAsset& a : cfg.imageLibrary)
+                if (a.url == key) { a.label = name; break; }
+    }
     commitCustomChange();
 }
 
