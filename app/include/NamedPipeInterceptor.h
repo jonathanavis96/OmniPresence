@@ -87,6 +87,13 @@ private:
     /// client list on exit.  Runs on its own std::thread.
     void serviceClient(HANDLE pipe);
 
+    /// Join and drop client threads that have already finished.  Every ~10 s the
+    /// watchdog's READY probe spins up a short-lived serviceClient thread; on exit
+    /// each thread moves its own std::thread into m_finishedThreads, and this
+    /// drains+joins them so their OS handles don't accumulate for the whole tray
+    /// session.  Called from the acceptor loop and from stop().
+    void reapFinishedThreads();
+
     /// Read exactly \p count bytes from \p pipe into \p buf.
     /// Returns false on EOF or error (treat as disconnect).
     static bool readExact(HANDLE pipe, void* buf, DWORD count);
@@ -120,10 +127,13 @@ private:
     // are guarded by m_clientsMutex.  stop() closes m_acceptPipe to unblock the
     // acceptor and CancelIoEx()es each client handle to unblock its reader, then
     // joins every thread (each serviceClient closes its own handle on exit).
+    // On disconnect a serviceClient moves its own entry from m_clientThreads into
+    // m_finishedThreads; reapFinishedThreads() joins that batch (see there).
     std::mutex                m_clientsMutex;
     HANDLE                    m_acceptPipe[2]{INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE};
     std::vector<HANDLE>       m_clientPipes;
     std::vector<std::thread>  m_clientThreads;
+    std::vector<std::thread>  m_finishedThreads;   // finished clients awaiting join
 
     bool                 m_autoBounce{true};   // gated off by OMNIPRESENCE_NO_AUTO_BOUNCE
     std::atomic<bool>    m_bounceTried{false};  // one-shot: never loop-kills Discord

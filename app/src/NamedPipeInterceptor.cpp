@@ -440,6 +440,11 @@ void NamedPipeInterceptor::stop()
             t.join();
         }
     }
+
+    // Drain any threads that self-reaped into m_finishedThreads before we cleared
+    // m_clientThreads above (a serviceClient reaching its exit after that clear
+    // finds itself gone and is joined via `threads`, so it never lands here).
+    reapFinishedThreads();
 }
 
 // ── I/O helpers ───────────────────────────────────────────────────────────────
@@ -566,6 +571,11 @@ void NamedPipeInterceptor::workerLoop(int pipeIndex)
         //   that blocks until the client reads — which froze us on the ACK
         //   write because RuneLite only reads on its callback timer.
         //   A real out-buffer makes writes return immediately (buffered).
+        // Reap client threads that finished since the last accept so their
+        // std::thread handles don't accumulate across a long tray session (the
+        // watchdog's ~10 s READY probe is the main source of short-lived clients).
+        reapFinishedThreads();
+
         HANDLE pipe = CreateNamedPipeW(
             pname.c_str(),
             PIPE_ACCESS_DUPLEX,
@@ -646,6 +656,27 @@ void NamedPipeInterceptor::workerLoop(int pipeIndex)
             m_clientThreads.emplace_back(&NamedPipeInterceptor::serviceClient, this, pipe);
         }
     } // acceptor while
+}
+
+// ── Reap finished client threads ────────────────────────────────────────────────
+// Join and drop serviceClient threads that moved themselves into m_finishedThreads
+// on disconnect.  Move the batch out under the lock, then join OUTSIDE it: a
+// just-reaped thread may still be a few instructions from returning, and holding
+// m_clientsMutex across join() would block other serviceClient exits that need the
+// same lock.  join() on an already-finished (or finishing) thread returns at once.
+void NamedPipeInterceptor::reapFinishedThreads()
+{
+    std::vector<std::thread> finished;
+    {
+        std::lock_guard<std::mutex> lock(m_clientsMutex);
+        finished = std::move(m_finishedThreads);
+        m_finishedThreads.clear();
+    }
+    for (std::thread& t : finished) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
 }
 
 // ── Per-client servicing ───────────────────────────────────────────────────────
@@ -789,6 +820,23 @@ disconnect:
         m_clientPipes.erase(
             std::remove(m_clientPipes.begin(), m_clientPipes.end(), pipe),
             m_clientPipes.end());
+
+        // Reap self: hand this thread's own std::thread over to m_finishedThreads
+        // so the acceptor loop (or stop()) can join it.  A joinable std::thread
+        // left in m_clientThreads would otherwise leak its OS handle until stop().
+        // We can't join ourselves, and detaching would risk touching a destroyed
+        // `this` after return — moving to a list that stop() still joins preserves
+        // the "all client threads joined before destruction" contract.  If stop()
+        // already moved m_clientThreads out to join everything itself, the search
+        // finds nothing and this is a no-op (stop() joins us via its own copy).
+        const std::thread::id self = std::this_thread::get_id();
+        for (auto it = m_clientThreads.begin(); it != m_clientThreads.end(); ++it) {
+            if (it->get_id() == self) {
+                m_finishedThreads.push_back(std::move(*it));
+                m_clientThreads.erase(it);
+                break;
+            }
+        }
     }
 }
 
