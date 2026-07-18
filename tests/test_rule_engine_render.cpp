@@ -261,6 +261,59 @@ private slots:
         QCOMPARE(p.name, QStringLiteral("Google Chrome"));   // generic presence, no AFK
     }
 
+    void idlePausedDoesNotLeakAwayCard() {
+        // Privacy wins over idle: when updates are paused, crossing the Away
+        // threshold must NOT publish a public "Away" card — it falls through to
+        // the private fallback instead. (Regression: idle used to run ahead of
+        // the pause/private check and leaked an idle state to Discord.)
+        RuleSet rules;
+        rules.addRule(osrsRule());
+
+        IntegrationContext integ;
+        WindowInfo win;
+        win.processName = QStringLiteral("chrome.exe");
+
+        IdleConfig idle;
+        idle.enabled      = true;
+        idle.afkSeconds   = 120;
+        idle.awaySeconds  = 600;
+        idle.awayLabel    = QStringLiteral("Away from computer");
+        idle.awayImageKey = QStringLiteral(
+            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png");
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        ov.paused = true;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/700, win.processName, idle);
+
+        QVERIFY(p.name != idle.awayLabel);                  // no public Away leak
+        QCOMPARE(p.name, QStringLiteral("Computer"));       // private fallback wins
+    }
+
+    void idlePrivateModeDoesNotLeakAfkCard() {
+        // Same guard for global private mode + the AFK tier.
+        RuleSet rules;
+        rules.addRule(osrsRule());
+
+        IntegrationContext integ;
+        WindowInfo win;
+        win.processName = QStringLiteral("RuneLite.exe");
+
+        IdleConfig idle;
+        idle.enabled     = true;
+        idle.afkSeconds  = 120;
+        idle.awaySeconds = 600;
+        idle.afkLabel    = QStringLiteral("AFK");
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        ov.privateMode = true;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/150, win.processName, idle);
+
+        QVERIFY(p.details != idle.afkLabel);                // no public AFK leak
+        QCOMPARE(p.name, QStringLiteral("Computer"));       // private fallback wins
+    }
+
     void idleBelowThresholdNeverOverrides() {
         // idle < afkSeconds -> normal presence, even with RuneLite focused.
         RuleSet rules;

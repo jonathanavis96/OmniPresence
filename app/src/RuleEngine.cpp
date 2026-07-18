@@ -142,13 +142,16 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
                                      const QString&              focusedProcessName,
                                      const IdleConfig&           idle) const
 {
-    // Priority 0 — input-idle override (AFK / Away-from-computer). Highest
-    // priority in the whole chain — takes over even ahead of manual pause /
-    // private mode, so presence always reflects "nobody is at the keyboard"
-    // the instant the threshold is crossed, regardless of other state. Higher
-    // threshold (awaySeconds) is checked FIRST so Away always wins over AFK
-    // when both are satisfied simultaneously (e.g. idle 20 min: away, not AFK).
-    if (idle.enabled) {
+    // Priority 0 — input-idle override (AFK / Away-from-computer). Fires ahead of
+    // pinned presence and normal rules so presence reflects "nobody is at the
+    // keyboard" the instant the threshold is crossed. It must NOT override the
+    // user's privacy controls, though: when updates are paused or private mode is
+    // on we skip idle entirely and fall through to the private fallback below —
+    // broadcasting a public "Away" / "AFK" card while the user asked to pause or
+    // stay private would be a privacy leak. Higher threshold (awaySeconds) is
+    // checked FIRST so Away always wins over AFK when both are satisfied
+    // simultaneously (e.g. idle 20 min: away, not AFK).
+    if (idle.enabled && !overrideState.paused && !overrideState.privateMode) {
         if (idleSeconds >= idle.awaySeconds) {
             return awayPresence(idle);
         }
