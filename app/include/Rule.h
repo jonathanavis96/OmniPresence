@@ -18,6 +18,11 @@ enum class ActivityType {
     Custom     = 4,
 };
 
+/// Canonical ActivityType <-> config-string mapping (shared by Rule and the
+/// custom-override config so both serialise the type identically).
+[[nodiscard]] QString      activityTypeToString(ActivityType t);
+[[nodiscard]] ActivityType activityTypeFromString(const QString& s);
+
 enum class TimestampMode {
     None            = 0,  ///< No timestamp shown.
     StartNow        = 1,  ///< Set timestamp when this rule first matches.

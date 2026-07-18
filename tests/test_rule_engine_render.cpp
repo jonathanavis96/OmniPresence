@@ -314,6 +314,45 @@ private slots:
         QCOMPARE(p.name, QStringLiteral("Computer"));       // private fallback wins
     }
 
+    // ── Priority 0: custom override ─────────────────────────────────────────
+
+    void customOverrideWinsOverIdle() {
+        // customOverride present -> it publishes even when idle would otherwise
+        // force an Away card (idle is priority 1, custom is priority 0).
+        RuleSet rules; rules.addRule(osrsRule());
+        IntegrationContext integ;
+        WindowInfo win; win.processName = QStringLiteral("chrome.exe");
+
+        IdleConfig idle; idle.enabled = true; idle.afkSeconds = 120; idle.awaySeconds = 600;
+        idle.awayLabel = QStringLiteral("Away from computer");
+
+        PresencePayload custom; custom.name = QStringLiteral("hello"); custom.details = QStringLiteral("frame 1");
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        ov.customOverride = custom;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/700, win.processName, idle);
+        QCOMPARE(p.name,    QStringLiteral("hello"));
+        QVERIFY(p.name != idle.awayLabel);
+    }
+
+    void customOverrideWinsOverPauseAndPrivate() {
+        // The user explicitly chose a presence to broadcast, so the custom
+        // override intentionally beats pause / private mode too.
+        RuleSet rules; rules.addRule(osrsRule());
+        IntegrationContext integ;
+        WindowInfo win; win.processName = QStringLiteral("chrome.exe");
+
+        PresencePayload custom; custom.name = QStringLiteral("streaming");
+
+        RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
+        ov.paused = true; ov.privateMode = true;
+        ov.customOverride = custom;
+        const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
+                                                   /*idleSeconds=*/0, win.processName, IdleConfig());
+        QCOMPARE(p.name, QStringLiteral("streaming"));      // not the "Computer" fallback
+    }
+
     void idleBelowThresholdNeverOverrides() {
         // idle < afkSeconds -> normal presence, even with RuneLite focused.
         RuleSet rules;

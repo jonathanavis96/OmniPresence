@@ -21,6 +21,10 @@
 #include <QStringList>
 #include <memory>
 
+// Qt classes live in the global namespace — forward-declare here (not inside
+// namespace OmniPresence, which would create a distinct incomplete type).
+class QNetworkAccessManager;
+
 namespace OmniPresence {
 
 class ActiveWindowWatcher;
@@ -64,6 +68,12 @@ class AppController : public QObject {
     Q_PROPERTY(int  idleAfkMinutes  READ idleAfkMinutes  WRITE setIdleAfkMinutes  NOTIFY idleConfigChanged)
     Q_PROPERTY(int  idleAwayMinutes READ idleAwayMinutes WRITE setIdleAwayMinutes NOTIFY idleConfigChanged)
 
+    // ── Custom override (the "Custom" tab) ────────────────────────────────────
+    Q_PROPERTY(bool    customEnabled         READ customEnabled         WRITE setCustomEnabled         NOTIFY customChanged)
+    Q_PROPERTY(QString customMode            READ customMode            WRITE setCustomMode            NOTIFY customChanged)
+    Q_PROPERTY(int     customActiveIndex     READ customActiveIndex     WRITE setCustomActiveIndex     NOTIFY customChanged)
+    Q_PROPERTY(int     customIntervalSeconds READ customIntervalSeconds WRITE setCustomIntervalSeconds NOTIFY customChanged)
+
 public:
     explicit AppController(QObject* parent = nullptr);
     ~AppController() override;
@@ -98,6 +108,12 @@ public:
     int      idleAfkMinutes()     const noexcept;
     int      idleAwayMinutes()    const noexcept;
 
+    // ── Custom-override getters ───────────────────────────────────────────────
+    bool     customEnabled()         const noexcept;
+    QString  customMode()            const;   ///< "single" | "cycle"
+    int      customActiveIndex()     const noexcept;
+    int      customIntervalSeconds() const noexcept;
+
     // ── QML-invokable actions ─────────────────────────────────────────────────
     Q_INVOKABLE void captureCurrentWindow();
     /// Start a short countdown, then snapshot whichever window the user focused.
@@ -121,6 +137,36 @@ public:
     Q_INVOKABLE void setIdleAfkMinutes(int minutes);
     /// Away-from-computer threshold in MINUTES (stored as seconds). Any app.
     Q_INVOKABLE void setIdleAwayMinutes(int minutes);
+
+    // ── Custom-override settings + preset CRUD (Custom tab) ────────────────────
+    Q_INVOKABLE void setCustomEnabled(bool enabled);
+    Q_INVOKABLE void setCustomMode(const QString& mode);              ///< "single" | "cycle"
+    Q_INVOKABLE void setCustomActiveIndex(int index);                ///< Single-mode selection.
+    Q_INVOKABLE void setCustomIntervalSeconds(int seconds);          ///< Cycle step (clamped >=1).
+    /// [{index,label,name,includeInCycle}] in list (= cycle) order.
+    Q_INVOKABLE QVariantList customPresetsList() const;
+    /// All editable fields of one preset (empty map if index out of range).
+    Q_INVOKABLE QVariantMap  customPresetAt(int index) const;
+    /// Append a preset from a draft map; returns the new index.
+    Q_INVOKABLE int          addCustomPreset(const QVariantMap& draft);
+    /// Update one field of the preset at `index`.
+    Q_INVOKABLE void         updateCustomPresetField(int index, const QString& field, const QVariant& value);
+    /// Delete the preset at `index`.
+    Q_INVOKABLE void         deleteCustomPreset(int index);
+    /// Move the preset at `from` to `to`, redefining both the single-mode picker
+    /// order and the cycle sequence.
+    Q_INVOKABLE void         reorderCustomPreset(int from, int to);
+    /// Reusable image library ([{index,label,url}]) shown as a pickable list.
+    Q_INVOKABLE QVariantList customImageLibrary() const;
+    /// Delete the library image at `index` (does not touch presets already using it).
+    Q_INVOKABLE void deleteCustomImage(int index);
+    /// Reorder the library image list (drives the pick-list order).
+    Q_INVOKABLE void reorderCustomImage(int from, int to);
+    /// Upload a local image to catbox.moe (anonymous, no key); on success set it
+    /// as preset `presetIndex`'s largeImageKey and append it to the image
+    /// library. Async — emits customUploadFinished(ok, message) when done. The
+    /// URL text field and library dropdown remain available as fallbacks.
+    Q_INVOKABLE void uploadPresetImage(int presetIndex, const QString& localPath);
 
     // ── Rule CRUD bridge (QML) ────────────────────────────────────────────────
     /// [{index,name,enabled,priority}] in config (insertion) order.
@@ -168,6 +214,10 @@ signals:
     void captureStateChanged();
     void rulesChanged();
     void idleConfigChanged();
+    void customChanged();
+    /// Emitted when an uploadPresetImage() call finishes. `ok` false => message
+    /// carries the error for the UI; the preset's URL field stays editable.
+    void customUploadFinished(bool ok, const QString& message);
 
 private slots:
     void onActiveWindowChanged(const OmniPresence::WindowInfo& info);
@@ -185,9 +235,29 @@ private slots:
     /// is otherwise unchanged. The isSamePresence change-gate in
     /// evaluateAndPublish() prevents this from spamming Discord.
     void onIdleTick();
+    /// Cycle-mode tick: advance to the next included preset frame and re-publish.
+    void onCustomFrameTick();
 
 private:
     void evaluateAndPublish();
+
+    /// Recompute m_overrideState.customOverride from the current custom config +
+    /// cycle frame index (nullopt when the override is off or resolves to
+    /// nothing). Called at the top of evaluateAndPublish() so the priority-0
+    /// override is always current regardless of what triggered the publish.
+    void refreshCustomOverride();
+
+    /// Start/stop/re-interval the cycle timer to match the current custom config
+    /// (runs only while enabled + Cycle mode + more than one included preset).
+    void reconfigureCustomTimer();
+
+    /// Shared tail for every custom-config mutation: persist, notify QML, retune
+    /// the cycle timer, and re-publish so the change is seen immediately.
+    void commitCustomChange();
+
+    /// Append `url` to the image library if it is a new http(s) URL (dedup by
+    /// URL) so an icon set on one preset becomes pickable on the others.
+    void addImageToLibraryIfNew(const QString& url, const QString& label = QString());
 
     /// Append one human-readable line to presence-events.log on each real
     /// presence change (what published + the signals behind it). This is the
@@ -226,6 +296,9 @@ private:
     class QTimer*   m_captureTimer{nullptr};
     class QTimer*   m_runeliteKeepAliveTimer{nullptr};
     class QTimer*   m_idleTickTimer{nullptr};
+    class QTimer*   m_customFrameTimer{nullptr};
+    int             m_customFrameIndex{0};   ///< Position within cycleIndices().
+    QNetworkAccessManager* m_netManager{nullptr};   ///< catbox uploads (global ::type).
     bool            m_capturing{false};
     int             m_captureCountdown{0};
 };

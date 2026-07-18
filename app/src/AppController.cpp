@@ -1,6 +1,13 @@
 // AppController.cpp — Central controller implementation.
 #include "AppController.h"
 #include "ActiveWindowWatcher.h"
+#include <algorithm>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QHttpMultiPart>
+#include <QHttpPart>
+#include <QFileInfo>
 #include "DiscordPresenceClient.h"
 #include "LocalContextServer.h"
 #include "NamedPipeInterceptor.h"
@@ -185,6 +192,13 @@ AppController::AppController(QObject* parent)
     m_idleTickTimer->setInterval(5000);
     connect(m_idleTickTimer, &QTimer::timeout,
             this, &AppController::onIdleTick);
+
+    // ── Custom-override cycle timer ─────────────────────────────────────────────
+    // Interval and start/stop are driven by reconfigureCustomTimer() from the
+    // config; it only runs while enabled + Cycle mode + >1 included preset.
+    m_customFrameTimer = new QTimer(this);
+    connect(m_customFrameTimer, &QTimer::timeout,
+            this, &AppController::onCustomFrameTick);
 }
 
 AppController::~AppController() = default;
@@ -206,6 +220,7 @@ void AppController::initialise() {
     m_discordCallbackTimer->start();
     m_runeliteKeepAliveTimer->start();
     m_idleTickTimer->start();
+    reconfigureCustomTimer();   // resume a saved enabled/cycle override on launch
 }
 
 // ── Property getters ──────────────────────────────────────────────────────────
@@ -332,6 +347,8 @@ void AppController::onIdleTick() {
 // ── Core evaluation ───────────────────────────────────────────────────────────
 
 void AppController::evaluateAndPublish() {
+    refreshCustomOverride();   // keep the priority-0 override current every publish
+
     const PresencePayload candidate = m_ruleEngine.evaluate(
         m_currentWindow,
         m_integrationContext,
@@ -347,8 +364,12 @@ void AppController::evaluateAndPublish() {
 
     // Icon-backlog discovery: record every distinct foreground app (even when
     // the presence itself did not change) so we can see which apps still lack
-    // a custom icon. Cheap — dedups internally.
-    logAppCoverage(candidate);
+    // a custom icon. Cheap — dedups internally. Skip it while the custom override
+    // is active: `candidate` is then a fixed preset, not the focused app's
+    // resolved presence, so logging it would falsely mark whatever app the user
+    // is on as "covered" by the override and corrupt the backlog.
+    if (!m_overrideState.customOverride.has_value())
+        logAppCoverage(candidate);
 
     // Skip the Discord API call if nothing changed.
     if (candidate.isSamePresence(m_lastPublishedPresence)) return;
@@ -618,6 +639,331 @@ void AppController::setIdleAwayMinutes(int minutes) {
     m_configStore->save();
     emit idleConfigChanged();
     evaluateAndPublish();
+}
+
+// ── Custom override (the "Custom" tab) ──────────────────────────────────────────
+
+static QVariantMap customPresetToMap(int index, const CustomPreset& p) {
+    return QVariantMap{
+        {QStringLiteral("index"),          index},
+        {QStringLiteral("label"),          p.label},
+        {QStringLiteral("name"),           p.name},
+        {QStringLiteral("details"),        p.details},
+        {QStringLiteral("state"),          p.state},
+        {QStringLiteral("activityType"),   activityTypeToString(p.activityType)},
+        {QStringLiteral("largeImageKey"),  p.largeImageKey},
+        {QStringLiteral("largeImageText"), p.largeImageText},
+        {QStringLiteral("smallImageKey"),  p.smallImageKey},
+        {QStringLiteral("smallImageText"), p.smallImageText},
+        {QStringLiteral("includeInCycle"), p.includeInCycle},
+    };
+}
+
+static void applyCustomPresetField(CustomPreset& p, const QString& field, const QVariant& value) {
+    if      (field == QLatin1String("label"))          p.label          = value.toString();
+    else if (field == QLatin1String("name"))           p.name           = value.toString();
+    else if (field == QLatin1String("details"))        p.details        = value.toString();
+    else if (field == QLatin1String("state"))          p.state          = value.toString();
+    else if (field == QLatin1String("activityType"))   p.activityType   = activityTypeFromString(value.toString());
+    else if (field == QLatin1String("largeImageKey"))  p.largeImageKey  = value.toString();
+    else if (field == QLatin1String("largeImageText")) p.largeImageText = value.toString();
+    else if (field == QLatin1String("smallImageKey"))  p.smallImageKey  = value.toString();
+    else if (field == QLatin1String("smallImageText")) p.smallImageText = value.toString();
+    else if (field == QLatin1String("includeInCycle")) p.includeInCycle = value.toBool();
+}
+
+bool    AppController::customEnabled()         const noexcept { return m_configStore->customConfig().enabled; }
+int     AppController::customActiveIndex()     const noexcept { return m_configStore->customConfig().activeIndex; }
+int     AppController::customIntervalSeconds() const noexcept { return m_configStore->customConfig().intervalSeconds; }
+QString AppController::customMode() const {
+    return m_configStore->customConfig().mode == CustomMode::Cycle
+        ? QStringLiteral("cycle") : QStringLiteral("single");
+}
+
+void AppController::refreshCustomOverride() {
+    const CustomOverrideConfig& cfg = m_configStore->customConfig();
+    if (!cfg.enabled) { m_overrideState.customOverride = std::nullopt; return; }
+
+    if (cfg.mode == CustomMode::Single) {
+        m_overrideState.customOverride = cfg.resolve(cfg.activeIndex);
+        return;
+    }
+
+    // Cycle: resolve the preset at the current frame within the included subset.
+    const QList<int> idx = cfg.cycleIndices();
+    if (idx.isEmpty()) { m_overrideState.customOverride = std::nullopt; return; }
+    if (m_customFrameIndex < 0 || m_customFrameIndex >= idx.size()) m_customFrameIndex = 0;
+    m_overrideState.customOverride = cfg.resolve(idx.at(m_customFrameIndex));
+}
+
+void AppController::reconfigureCustomTimer() {
+    const CustomOverrideConfig& cfg = m_configStore->customConfig();
+    const bool cycling = cfg.enabled
+                      && cfg.mode == CustomMode::Cycle
+                      && cfg.cycleIndices().size() > 1;
+    if (cycling) {
+        if (!m_customFrameTimer->isActive()) m_customFrameIndex = 0;
+        m_customFrameTimer->start(std::max(1, cfg.intervalSeconds) * 1000);
+    } else {
+        m_customFrameTimer->stop();
+    }
+}
+
+void AppController::onCustomFrameTick() {
+    const QList<int> idx = m_configStore->customConfig().cycleIndices();
+    if (idx.isEmpty()) return;
+    m_customFrameIndex = (m_customFrameIndex + 1) % idx.size();
+    evaluateAndPublish();   // refreshCustomOverride() inside picks up the new frame
+}
+
+void AppController::commitCustomChange() {
+    m_configStore->save();
+    emit customChanged();
+    reconfigureCustomTimer();
+    evaluateAndPublish();
+}
+
+void AppController::setCustomEnabled(bool enabled) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    if (cfg.enabled == enabled) return;
+    cfg.enabled = enabled;
+    commitCustomChange();
+}
+
+void AppController::setCustomMode(const QString& mode) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    const CustomMode m = (mode == QLatin1String("cycle")) ? CustomMode::Cycle : CustomMode::Single;
+    if (cfg.mode == m) return;
+    cfg.mode = m;
+    m_customFrameIndex = 0;
+    commitCustomChange();
+}
+
+void AppController::setCustomActiveIndex(int index) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    if (cfg.activeIndex == index) return;
+    cfg.activeIndex = index;
+    commitCustomChange();
+}
+
+void AppController::setCustomIntervalSeconds(int seconds) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    const int clamped = std::max(1, seconds);
+    if (cfg.intervalSeconds == clamped) return;
+    cfg.intervalSeconds = clamped;
+    commitCustomChange();
+}
+
+QVariantList AppController::customPresetsList() const {
+    QVariantList out;
+    const QList<CustomPreset>& presets = m_configStore->customConfig().presets;
+    for (int i = 0; i < presets.size(); ++i) {
+        const CustomPreset& p = presets.at(i);
+        out.append(QVariantMap{
+            {QStringLiteral("index"),          i},
+            {QStringLiteral("label"),          p.label.isEmpty() ? QStringLiteral("(unnamed)") : p.label},
+            {QStringLiteral("name"),           p.name},
+            {QStringLiteral("includeInCycle"), p.includeInCycle},
+        });
+    }
+    return out;
+}
+
+QVariantMap AppController::customPresetAt(int index) const {
+    const QList<CustomPreset>& presets = m_configStore->customConfig().presets;
+    if (index < 0 || index >= presets.size()) return {};
+    return customPresetToMap(index, presets.at(index));
+}
+
+int AppController::addCustomPreset(const QVariantMap& draft) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    CustomPreset p;
+    p.id    = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    p.label = draft.value(QStringLiteral("label"), QStringLiteral("Custom")).toString();
+    for (auto it = draft.constBegin(); it != draft.constEnd(); ++it)
+        applyCustomPresetField(p, it.key(), it.value());
+    cfg.presets.append(p);
+    commitCustomChange();
+    return cfg.presets.size() - 1;
+}
+
+void AppController::updateCustomPresetField(int index, const QString& field, const QVariant& value) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    if (index < 0 || index >= cfg.presets.size()) return;
+    applyCustomPresetField(cfg.presets[index], field, value);
+    // Setting a preset's icon URL adds it to the shared library so it can be
+    // picked on other presets.
+    if (field == QLatin1String("largeImageKey")) {
+        addImageToLibraryIfNew(value.toString());
+    } else if (field == QLatin1String("largeImageText")) {
+        // Naming the icon renames its library entry, so the library shows the
+        // name you gave the photo rather than the raw filename.
+        const QString name = value.toString().trimmed();
+        const QString key  = cfg.presets[index].largeImageKey;
+        if (!name.isEmpty() && !key.isEmpty())
+            for (CustomImageAsset& a : cfg.imageLibrary)
+                if (a.url == key) { a.label = name; break; }
+    }
+    commitCustomChange();
+}
+
+void AppController::deleteCustomPreset(int index) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    if (index < 0 || index >= cfg.presets.size()) return;
+    cfg.presets.removeAt(index);
+    // Keep activeIndex pointing at the SAME preset: the list shifts left when a
+    // row before the active one is removed, so decrement to compensate.
+    if (cfg.activeIndex > index) --cfg.activeIndex;
+    if (cfg.activeIndex >= cfg.presets.size())
+        cfg.activeIndex = std::max(0, static_cast<int>(cfg.presets.size()) - 1);
+    commitCustomChange();
+}
+
+void AppController::reorderCustomPreset(int from, int to) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    const int n = cfg.presets.size();
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
+    cfg.presets.move(from, to);
+    // Remap activeIndex through the move so the same preset stays active (Single
+    // mode publishes presets[activeIndex], which is a position, not an identity).
+    int& ai = cfg.activeIndex;
+    if      (ai == from)                      ai = to;
+    else if (from < to && ai > from && ai <= to) --ai;
+    else if (to < from && ai >= to && ai < from) ++ai;
+    commitCustomChange();
+}
+
+QVariantList AppController::customImageLibrary() const {
+    QVariantList out;
+    const QList<CustomImageAsset>& lib = m_configStore->customConfig().imageLibrary;
+    for (int i = 0; i < lib.size(); ++i)
+        out.append(QVariantMap{
+            {QStringLiteral("index"), i},
+            {QStringLiteral("label"), lib.at(i).label},
+            {QStringLiteral("url"),   lib.at(i).url}});
+    return out;
+}
+
+void AppController::deleteCustomImage(int index) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    if (index < 0 || index >= cfg.imageLibrary.size()) return;
+    cfg.imageLibrary.removeAt(index);   // presets already using the URL keep it
+    commitCustomChange();
+}
+
+void AppController::reorderCustomImage(int from, int to) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    const int n = cfg.imageLibrary.size();
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
+    cfg.imageLibrary.move(from, to);
+    commitCustomChange();
+}
+
+void AppController::addImageToLibraryIfNew(const QString& url, const QString& label) {
+    const QString u = url.trimmed();
+    if (!u.startsWith(QLatin1String("http://")) && !u.startsWith(QLatin1String("https://"))) return;
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    for (const CustomImageAsset& a : cfg.imageLibrary)
+        if (a.url == u) return;                       // already in the library
+    QString name = label.isEmpty() ? QUrl(u).fileName() : label;
+    if (name.isEmpty()) name = u;
+    cfg.imageLibrary.append(CustomImageAsset{name, u});
+}
+
+void AppController::uploadPresetImage(int presetIndex, const QString& localPath) {
+    // Validate the target preset and file up-front so we never fire a network
+    // request we can't use the result of.
+    if (presetIndex < 0 || presetIndex >= m_configStore->customConfig().presets.size()) {
+        emit customUploadFinished(false, QStringLiteral("No preset selected."));
+        return;
+    }
+    // Capture the target by stable id, not index: the user can delete/reorder
+    // presets while the upload is in flight, and an index would then land the
+    // icon on whatever preset now sits in that slot.
+    const QString targetId = m_configStore->customConfig().presets.at(presetIndex).id;
+
+    // A QML DropArea hands us a file URL ("file:///C:/dir/my%20icon.png"), not a
+    // native path — toLocalFile() strips the scheme, fixes the Windows leading
+    // slash, and percent-decodes spaces. A plain path passes through unchanged.
+    const QUrl url(localPath);
+    const QString path = url.isLocalFile() ? url.toLocalFile() : localPath;
+
+    QFileInfo info(path);
+    if (!info.exists() || !info.isFile()) {
+        emit customUploadFinished(false, QStringLiteral("File not found: %1").arg(localPath));
+        return;
+    }
+
+    QFile* file = new QFile(info.absoluteFilePath());
+    if (!file->open(QIODevice::ReadOnly)) {
+        emit customUploadFinished(false, QStringLiteral("Could not open %1").arg(info.fileName()));
+        delete file;
+        return;
+    }
+
+    if (!m_netManager) m_netManager = new QNetworkAccessManager(this);
+
+    // catbox.moe anonymous upload: multipart POST, reqtype=fileupload +
+    // fileToUpload; the response body is the direct file URL (no API key).
+    auto* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+    QHttpPart reqTypePart;
+    reqTypePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                          QStringLiteral("form-data; name=\"reqtype\""));
+    reqTypePart.setBody(QByteArrayLiteral("fileupload"));
+    multiPart->append(reqTypePart);
+
+    QHttpPart filePart;
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QStringLiteral("form-data; name=\"fileToUpload\"; filename=\"%1\"").arg(info.fileName()));
+    // catbox 500s a file part with no Content-Type; curl sends one, so mirror it.
+    // Map the common image extensions; fall back to octet-stream like curl does.
+    const QString ext = info.suffix().toLower();
+    const QString mime = ext == QLatin1String("png")  ? QStringLiteral("image/png")
+                       : ext == QLatin1String("jpg") || ext == QLatin1String("jpeg") ? QStringLiteral("image/jpeg")
+                       : ext == QLatin1String("gif")  ? QStringLiteral("image/gif")
+                       : ext == QLatin1String("webp") ? QStringLiteral("image/webp")
+                       : QStringLiteral("application/octet-stream");
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, mime);
+    file->setParent(multiPart);          // multiPart owns the file lifetime
+    filePart.setBodyDevice(file);
+    multiPart->append(filePart);
+
+    QNetworkRequest request(QUrl(QStringLiteral("https://catbox.moe/user/api.php")));
+    QNetworkReply* reply = m_netManager->post(request, multiPart);
+    multiPart->setParent(reply);          // reply owns the multiPart
+
+    const QString fileName = info.fileName();
+    connect(reply, &QNetworkReply::finished, this, [this, reply, targetId, fileName]() {
+        reply->deleteLater();
+        const QString body = QString::fromUtf8(reply->readAll()).trimmed();
+        const QString url  = body;   // catbox's success body IS the direct URL
+        const bool looksLikeUrl = url.startsWith(QLatin1String("https://"))
+                               || url.startsWith(QLatin1String("http://"));
+
+        if (!looksLikeUrl) {
+            // Surface the real reason: prefer catbox's response body (it often
+            // carries a human error string), else the transport error string.
+            const QString detail = body.isEmpty() ? reply->errorString() : body.left(160);
+            emit customUploadFinished(false, QStringLiteral("Upload failed: %1").arg(detail));
+            return;
+        }
+
+        // Re-find the target preset by id — the list may have been reordered or
+        // had rows deleted while the upload was in flight.
+        CustomOverrideConfig& cfg = m_configStore->customConfig();
+        int idx = -1;
+        for (int i = 0; i < cfg.presets.size(); ++i)
+            if (cfg.presets.at(i).id == targetId) { idx = i; break; }
+        if (idx < 0) {
+            emit customUploadFinished(false, QStringLiteral("Preset no longer exists — copy this URL: %1").arg(url));
+            return;
+        }
+        cfg.presets[idx].largeImageKey = url;
+        addImageToLibraryIfNew(url, fileName);
+        commitCustomChange();             // persist + refresh the page (icon updates)
+        emit customUploadFinished(true, url);
+    });
 }
 
 // ── Art sources + available context (Task 5) ───────────────────────────────────

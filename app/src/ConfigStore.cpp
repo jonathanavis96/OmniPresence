@@ -8,6 +8,8 @@
 #include <QJsonArray>
 #include <QStandardPaths>
 #include <QDebug>
+#include <QUuid>
+#include <algorithm>
 
 namespace OmniPresence {
 
@@ -93,6 +95,92 @@ static IdleConfig idleConfigFromJson(const QJsonObject& obj) {
     return cfg;
 }
 
+// ── CustomOverrideConfig JSON helpers (Custom tab) ──────────────────────────────
+
+static QString customModeToString(CustomMode m) {
+    return m == CustomMode::Cycle ? QStringLiteral("cycle") : QStringLiteral("single");
+}
+static CustomMode customModeFromString(const QString& s) {
+    return s == QLatin1String("cycle") ? CustomMode::Cycle : CustomMode::Single;
+}
+
+static QJsonObject customPresetToJson(const CustomPreset& p) {
+    QJsonObject o;
+    o[QStringLiteral("id")]             = p.id;
+    o[QStringLiteral("label")]          = p.label;
+    o[QStringLiteral("name")]           = p.name;
+    o[QStringLiteral("details")]        = p.details;
+    o[QStringLiteral("state")]          = p.state;
+    o[QStringLiteral("activityType")]   = activityTypeToString(p.activityType);
+    o[QStringLiteral("largeImageKey")]  = p.largeImageKey;
+    o[QStringLiteral("largeImageText")] = p.largeImageText;
+    o[QStringLiteral("smallImageKey")]  = p.smallImageKey;
+    o[QStringLiteral("smallImageText")] = p.smallImageText;
+    o[QStringLiteral("includeInCycle")] = p.includeInCycle;
+    return o;
+}
+static CustomPreset customPresetFromJson(const QJsonObject& o) {
+    CustomPreset p;
+    p.id             = o[QStringLiteral("id")].toString();
+    if (p.id.isEmpty())   // backfill presets saved before ids existed
+        p.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    p.label          = o[QStringLiteral("label")].toString(QStringLiteral("Custom"));
+    p.name           = o[QStringLiteral("name")].toString();
+    p.details        = o[QStringLiteral("details")].toString();
+    p.state          = o[QStringLiteral("state")].toString();
+    p.activityType   = activityTypeFromString(o[QStringLiteral("activityType")].toString());
+    p.largeImageKey  = o[QStringLiteral("largeImageKey")].toString();
+    p.largeImageText = o[QStringLiteral("largeImageText")].toString();
+    p.smallImageKey  = o[QStringLiteral("smallImageKey")].toString();
+    p.smallImageText = o[QStringLiteral("smallImageText")].toString();
+    p.includeInCycle = o[QStringLiteral("includeInCycle")].toBool(true);
+    return p;
+}
+
+static QJsonObject customConfigToJson(const CustomOverrideConfig& cfg) {
+    QJsonObject obj;
+    obj[QStringLiteral("enabled")]         = cfg.enabled;
+    obj[QStringLiteral("mode")]            = customModeToString(cfg.mode);
+    obj[QStringLiteral("activeIndex")]     = cfg.activeIndex;
+    obj[QStringLiteral("intervalSeconds")] = cfg.intervalSeconds;
+
+    QJsonArray presets;
+    for (const CustomPreset& p : cfg.presets) presets.append(customPresetToJson(p));
+    obj[QStringLiteral("presets")] = presets;
+
+    QJsonArray lib;
+    for (const CustomImageAsset& a : cfg.imageLibrary) {
+        QJsonObject ao;
+        ao[QStringLiteral("label")] = a.label;
+        ao[QStringLiteral("url")]   = a.url;
+        lib.append(ao);
+    }
+    obj[QStringLiteral("imageLibrary")] = lib;
+    return obj;
+}
+
+// A missing "custom" object (or any missing field) leaves the override off with
+// empty lists — the shipped default, so an untouched install never overrides.
+static CustomOverrideConfig customConfigFromJson(const QJsonObject& obj) {
+    CustomOverrideConfig cfg;
+    cfg.enabled         = obj[QStringLiteral("enabled")].toBool(false);
+    cfg.mode            = customModeFromString(obj[QStringLiteral("mode")].toString());
+    cfg.activeIndex     = obj[QStringLiteral("activeIndex")].toInt(0);
+    cfg.intervalSeconds = std::max(1, obj[QStringLiteral("intervalSeconds")].toInt(4));
+
+    const QJsonArray presets = obj[QStringLiteral("presets")].toArray();
+    for (const QJsonValue& v : presets) cfg.presets.append(customPresetFromJson(v.toObject()));
+
+    const QJsonArray lib = obj[QStringLiteral("imageLibrary")].toArray();
+    for (const QJsonValue& v : lib) {
+        const QJsonObject ao = v.toObject();
+        cfg.imageLibrary.append(CustomImageAsset{
+            ao[QStringLiteral("label")].toString(),
+            ao[QStringLiteral("url")].toString()});
+    }
+    return cfg;
+}
+
 // ── ConfigStore ───────────────────────────────────────────────────────────────
 
 ConfigStore::ConfigStore(QObject* parent)
@@ -125,6 +213,7 @@ bool ConfigStore::load() {
         // shipped default. Route through idleConfigFromJson(empty) so a
         // fresh install still gets enabled=true, 120 s / 600 s, etc.
         m_idleConfig = idleConfigFromJson(QJsonObject());
+        m_customConfig = customConfigFromJson(QJsonObject());   // off by default
         emit configLoaded();
         return true;   // Fresh install — defaults are fine.
     }
@@ -190,6 +279,10 @@ bool ConfigStore::parseJson(const QByteArray& data) {
     // Idle-tier (AFK / Away-from-computer) config. Optional top-level object —
     // any/all missing fields default (see idleConfigFromJson).
     m_idleConfig = idleConfigFromJson(root.value(QStringLiteral("idle")).toObject());
+
+    // Custom-override (the "Custom" tab). Optional top-level object — absent =
+    // override off (see customConfigFromJson).
+    m_customConfig = customConfigFromJson(root.value(QStringLiteral("custom")).toObject());
     // Art-asset metadata (key -> hover text). Optional top-level object.
     m_assetKeys.clear();
     const QJsonObject assets = root.value(QStringLiteral("assetKeys")).toObject();
@@ -234,6 +327,7 @@ QByteArray ConfigStore::serialiseJson() const {
     QJsonObject root = settingsToJson(m_settings);
     root[QStringLiteral("rules")] = m_ruleSet.toJson().value(QStringLiteral("rules"));
     root[QStringLiteral("idle")] = idleConfigToJson(m_idleConfig);
+    root[QStringLiteral("custom")] = customConfigToJson(m_customConfig);
     QJsonObject assets;
     for (auto it = m_assetKeys.constBegin(); it != m_assetKeys.constEnd(); ++it)
         assets[it.key()] = it.value();
