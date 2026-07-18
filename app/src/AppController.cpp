@@ -119,8 +119,16 @@ AppController::AppController(QObject* parent)
                 // is fully connected.  Starting the interceptor earlier would let it
                 // intercept our own SDK's OAuth authorize on ipc-0 (empty code →
                 // token exchange 400).  start() is idempotent.
+                //
+                // Preview builds (OMNIPRESENCE_WITH_DISCORD off — the CMake default)
+                // fake a Connected status even though updatePresence() is a no-op, so
+                // gate the interceptor on a real SDK-backed build.  Otherwise a dev /
+                // default build would kill-relaunch Discord and squat ipc-0/1, stealing
+                // RuneLite away from the real client with nothing able to republish it.
                 if (status == DiscordConnectionStatus::Connected) {
+#ifdef OMNIPRESENCE_WITH_DISCORD
                     m_runeliteInterceptor->start();
+#endif
                 }
                 // On a real disconnect or error, release discord-ipc-0/1 so the
                 // interceptor's watchdog stops bouncing Discord and RuneLite's
