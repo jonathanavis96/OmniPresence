@@ -168,10 +168,16 @@ Page {
                                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 8 }
                                 spacing: 6
 
-                                Rectangle {
-                                    width: 8; height: 8; radius: 4
+                                // Cycle mode: tick which presets are in the rotation.
+                                CheckBox {
                                     visible: AppController.customMode === "cycle"
-                                    color: modelData.includeInCycle ? "#23a55a" : "#4f5660"
+                                    checked: modelData.includeInCycle
+                                    padding: 0
+                                    implicitWidth: 24
+                                    onToggled: AppController.updateCustomPresetField(
+                                                   modelData.index, "includeInCycle", checked)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: checked ? "In the cycle" : "Not in the cycle"
                                 }
 
                                 ColumnLayout {
@@ -301,19 +307,13 @@ Page {
                         onToggled: if (checked) AppController.customActiveIndex = root.selectedIndex
                     }
 
-                    // 5 — Cycle-mode: include in rotation
-                    RowLayout {
+                    // 5 — Cycle-mode hint (the actual include toggles are the
+                    //     checkboxes in the preset list on the left).
+                    Text {
                         visible: AppController.customMode === "cycle"
-                        spacing: 12
-                        Switch {
-                            checked: root.current.includeInCycle === true
-                            onToggled: root.setField("includeInCycle", checked)
-                        }
-                        Text {
-                            text: "Include in cycle"
-                            color: "#dbdee1"; font.pixelSize: 13
-                            verticalAlignment: Text.AlignVCenter
-                        }
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        text: "Tick the checkboxes in the preset list to choose which presets are in the cycle."
+                        color: "#949ba4"; font.pixelSize: 11
                     }
 
                     // 6 — Icon
@@ -334,11 +334,14 @@ Page {
                             Text { anchors.centerIn: parent; visible: !customArt.visible; text: "—"; color: "#4f5660" }
                             DropArea {
                                 anchors.fill: parent
+                                keys: ["text/uri-list"]
                                 onDropped: function(drop) {
                                     if (drop.hasUrls && drop.urls.length > 0 && root.selectedIndex >= 0) {
-                                        var path = drop.urls[0].toString().replace(/^file:\/\//, "")
+                                        // Pass the raw file URL; C++ converts it with
+                                        // QUrl::toLocalFile() (handles the Windows
+                                        // leading slash + %20 decoding).
                                         root.uploadStatus = "Uploading…"
-                                        AppController.uploadPresetImage(root.selectedIndex, path)
+                                        AppController.uploadPresetImage(root.selectedIndex, drop.urls[0])
                                     }
                                 }
                             }
@@ -380,19 +383,53 @@ Page {
                         font.pixelSize: 11
                     }
 
-                    // 7 — Live preview
-                    Text {
-                        Layout.fillWidth: true; wrapMode: Text.WordWrap
-                        text: {
-                            var n = root.current.name || "(no name)"
-                            var d = root.current.details || ""
-                            var s = root.current.state || ""
-                            var line = "▶  Discord will show: " + n
-                            if (d) line += " — " + d
-                            if (s) line += " — " + s
-                            return line
+                    // 7 — Live preview: how Discord actually stacks the card
+                    //     (name bold on top, then details, then state).
+                    Label2 { text: "Preview (how Discord shows it)" }
+                    Rectangle {
+                        Layout.preferredWidth: 320
+                        color: "#232428"; radius: 8
+                        implicitHeight: Math.max(64, prevRow.implicitHeight + 20)
+                        RowLayout {
+                            id: prevRow
+                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 12; rightMargin: 12 }
+                            spacing: 12
+                            Rectangle {
+                                width: 44; height: 44; radius: 6; color: "#1e1f22"; clip: true
+                                Image {
+                                    id: prevArt
+                                    anchors.fill: parent; anchors.margins: 1
+                                    fillMode: Image.PreserveAspectCrop
+                                    source: root.current.largeImageKey
+                                            ? AppController.artSourceForKey(root.current.largeImageKey) : ""
+                                    visible: source !== "" && status === Image.Ready
+                                }
+                                Text { anchors.centerIn: parent; visible: !prevArt.visible; text: "—"; color: "#4f5660" }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 1
+                                Text {
+                                    text: (root.current.name && root.current.name.length)
+                                          ? root.current.name : "(no name — won't publish)"
+                                    color: (root.current.name && root.current.name.length) ? "#ffffff" : "#ed4245"
+                                    font.pixelSize: 13; font.bold: true
+                                    Layout.fillWidth: true; elide: Text.ElideRight
+                                }
+                                Text {
+                                    visible: (root.current.details || "") !== ""
+                                    text: root.current.details || ""
+                                    color: "#dbdee1"; font.pixelSize: 12
+                                    Layout.fillWidth: true; elide: Text.ElideRight
+                                }
+                                Text {
+                                    visible: (root.current.state || "") !== ""
+                                    text: root.current.state || ""
+                                    color: "#b5bac1"; font.pixelSize: 12
+                                    Layout.fillWidth: true; elide: Text.ElideRight
+                                }
+                            }
                         }
-                        color: "#949ba4"; font.pixelSize: 11
                     }
 
                     // ── Advanced (collapsed) ──────────────────────────────────

@@ -820,7 +820,14 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
         emit customUploadFinished(false, QStringLiteral("No preset selected."));
         return;
     }
-    QFileInfo info(localPath);
+
+    // A QML DropArea hands us a file URL ("file:///C:/dir/my%20icon.png"), not a
+    // native path — toLocalFile() strips the scheme, fixes the Windows leading
+    // slash, and percent-decodes spaces. A plain path passes through unchanged.
+    const QUrl url(localPath);
+    const QString path = url.isLocalFile() ? url.toLocalFile() : localPath;
+
+    QFileInfo info(path);
     if (!info.exists() || !info.isFile()) {
         emit customUploadFinished(false, QStringLiteral("File not found: %1").arg(localPath));
         return;
