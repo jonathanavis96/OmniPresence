@@ -774,6 +774,7 @@ QVariantMap AppController::customPresetAt(int index) const {
 int AppController::addCustomPreset(const QVariantMap& draft) {
     CustomOverrideConfig& cfg = m_configStore->customConfig();
     CustomPreset p;
+    p.id    = QUuid::createUuid().toString(QUuid::WithoutBraces);
     p.label = draft.value(QStringLiteral("label"), QStringLiteral("Custom")).toString();
     for (auto it = draft.constBegin(); it != draft.constEnd(); ++it)
         applyCustomPresetField(p, it.key(), it.value());
@@ -806,6 +807,9 @@ void AppController::deleteCustomPreset(int index) {
     CustomOverrideConfig& cfg = m_configStore->customConfig();
     if (index < 0 || index >= cfg.presets.size()) return;
     cfg.presets.removeAt(index);
+    // Keep activeIndex pointing at the SAME preset: the list shifts left when a
+    // row before the active one is removed, so decrement to compensate.
+    if (cfg.activeIndex > index) --cfg.activeIndex;
     if (cfg.activeIndex >= cfg.presets.size())
         cfg.activeIndex = std::max(0, static_cast<int>(cfg.presets.size()) - 1);
     commitCustomChange();
@@ -816,6 +820,12 @@ void AppController::reorderCustomPreset(int from, int to) {
     const int n = cfg.presets.size();
     if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
     cfg.presets.move(from, to);
+    // Remap activeIndex through the move so the same preset stays active (Single
+    // mode publishes presets[activeIndex], which is a position, not an identity).
+    int& ai = cfg.activeIndex;
+    if      (ai == from)                      ai = to;
+    else if (from < to && ai > from && ai <= to) --ai;
+    else if (to < from && ai >= to && ai < from) ++ai;
     commitCustomChange();
 }
 
@@ -863,6 +873,10 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
         emit customUploadFinished(false, QStringLiteral("No preset selected."));
         return;
     }
+    // Capture the target by stable id, not index: the user can delete/reorder
+    // presets while the upload is in flight, and an index would then land the
+    // icon on whatever preset now sits in that slot.
+    const QString targetId = m_configStore->customConfig().presets.at(presetIndex).id;
 
     // A QML DropArea hands us a file URL ("file:///C:/dir/my%20icon.png"), not a
     // native path — toLocalFile() strips the scheme, fixes the Windows leading
@@ -916,7 +930,7 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
     multiPart->setParent(reply);          // reply owns the multiPart
 
     const QString fileName = info.fileName();
-    connect(reply, &QNetworkReply::finished, this, [this, reply, presetIndex, fileName]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, targetId, fileName]() {
         reply->deleteLater();
         const QString body = QString::fromUtf8(reply->readAll()).trimmed();
         const QString url  = body;   // catbox's success body IS the direct URL
@@ -931,13 +945,17 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
             return;
         }
 
-        // The preset list may have changed while the upload was in flight.
+        // Re-find the target preset by id — the list may have been reordered or
+        // had rows deleted while the upload was in flight.
         CustomOverrideConfig& cfg = m_configStore->customConfig();
-        if (presetIndex < 0 || presetIndex >= cfg.presets.size()) {
+        int idx = -1;
+        for (int i = 0; i < cfg.presets.size(); ++i)
+            if (cfg.presets.at(i).id == targetId) { idx = i; break; }
+        if (idx < 0) {
             emit customUploadFinished(false, QStringLiteral("Preset no longer exists — copy this URL: %1").arg(url));
             return;
         }
-        cfg.presets[presetIndex].largeImageKey = url;
+        cfg.presets[idx].largeImageKey = url;
         addImageToLibraryIfNew(url, fileName);
         commitCustomChange();             // persist + refresh the page (icon updates)
         emit customUploadFinished(true, url);

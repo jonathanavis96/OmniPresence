@@ -147,6 +147,11 @@ private slots:
         QCOMPARE(r.presets.at(0).largeImageKey,  QStringLiteral("https://files.catbox.moe/a.png"));
         QCOMPARE(r.presets.at(0).includeInCycle, true);
         QCOMPARE(r.presets.at(1).includeInCycle, false);
+        // Presets saved without an id (pre-id configs) are backfilled a stable id
+        // on load so async work / activeIndex can track them across reorders.
+        QVERIFY(!r.presets.at(0).id.isEmpty());
+        QVERIFY(!r.presets.at(1).id.isEmpty());
+        QVERIFY(r.presets.at(0).id != r.presets.at(1).id);
         QCOMPARE(r.imageLibrary.size(),          1);
         QCOMPARE(r.imageLibrary.at(0).url,       QStringLiteral("https://files.catbox.moe/a.png"));
     }

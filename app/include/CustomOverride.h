@@ -18,6 +18,10 @@ namespace OmniPresence {
 
 /// One saved presence in the override library.
 struct CustomPreset {
+    QString      id;                                ///< Stable identity (UUID) —
+                                                    ///< survives list reorder/delete
+                                                    ///< so async work (uploads) and
+                                                    ///< activeIndex track the right one.
     QString      label{QStringLiteral("Custom")};   ///< List label (not published).
     QString      name;                              ///< Discord activity name.
     QString      details;

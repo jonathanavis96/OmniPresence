@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QStandardPaths>
 #include <QDebug>
+#include <QUuid>
 #include <algorithm>
 
 namespace OmniPresence {
@@ -105,6 +106,7 @@ static CustomMode customModeFromString(const QString& s) {
 
 static QJsonObject customPresetToJson(const CustomPreset& p) {
     QJsonObject o;
+    o[QStringLiteral("id")]             = p.id;
     o[QStringLiteral("label")]          = p.label;
     o[QStringLiteral("name")]           = p.name;
     o[QStringLiteral("details")]        = p.details;
@@ -119,6 +121,9 @@ static QJsonObject customPresetToJson(const CustomPreset& p) {
 }
 static CustomPreset customPresetFromJson(const QJsonObject& o) {
     CustomPreset p;
+    p.id             = o[QStringLiteral("id")].toString();
+    if (p.id.isEmpty())   // backfill presets saved before ids existed
+        p.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     p.label          = o[QStringLiteral("label")].toString(QStringLiteral("Custom"));
     p.name           = o[QStringLiteral("name")].toString();
     p.details        = o[QStringLiteral("details")].toString();
