@@ -283,10 +283,22 @@ std::optional<Rule> RuleEngine::matchRule(const QList<Rule>&        sortedRules,
                 return rule;
             }
 
-            // Other sources (runelite/terminal/vscode): the app is focused and the
-            // feed is fresh, so match. We intentionally do NOT re-check the rule's
-            // matchProcessName here — the RuneLite dev client runs as java.exe, so
-            // a "RuneLite.exe" process criterion would wrongly reject it.
+            // RuneLite is the one narrow exception: its dev client runs as
+            // java.exe, so a "RuneLite.exe" process criterion would wrongly
+            // reject it. There we accept on focus + fresh feed alone.
+            //
+            // Every other source (terminal/vscode) must still honour its own
+            // process/title/path criteria — otherwise the Windows Terminal rule
+            // (matchProcessName "WindowsTerminal.exe") would wrongly apply to
+            // cmd.exe/PowerShell whenever terminal context is fresh, and multiple
+            // rules sharing a source could not discriminate between apps.
+            if (rule.matchIntegrationSource != QLatin1String("runelite")) {
+                if (!rule.matches(window.processName, window.executablePath,
+                                  window.windowTitle, browserDomain,
+                                  browserCategory, activeIntegrationSource)) {
+                    continue;
+                }
+            }
             qDebug() << "[RuleEngine] integration(" << rule.matchIntegrationSource
                      << ") rule matched (focused + fresh):" << rule.name
                      << "proc=" << window.processName;
