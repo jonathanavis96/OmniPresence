@@ -21,6 +21,7 @@ set(OMNIPRESENCE_SOURCES
     src/TemplateEngine.cpp
     src/SkillLabel.cpp
     src/ArtStore.cpp
+    src/CustomOverride.cpp
     src/RuleEngine.cpp
     src/DiscordPresenceClient.cpp
     src/LocalContextServer.cpp
@@ -43,6 +44,7 @@ set(OMNIPRESENCE_HEADERS
     include/IntegrationContext.h
     include/TemplateEngine.h
     include/SkillLabel.h
+    include/CustomOverride.h
     include/RuleEngine.h
     include/DiscordPresenceClient.h
     include/LocalContextServer.h

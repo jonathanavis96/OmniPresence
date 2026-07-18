@@ -62,6 +62,8 @@ add_executable(test_config_assets
     test_config_assets.cpp
     ${OMNI_TEST_SRC}/ConfigStore.cpp
     ${OMNI_TEST_SRC}/Rule.cpp
+    ${OMNI_TEST_SRC}/CustomOverride.cpp
+    ${OMNI_TEST_SRC}/PresencePayload.cpp
     ${CMAKE_SOURCE_DIR}/app/include/ConfigStore.h   # AUTOMOC scans Q_OBJECT header
 )
 target_include_directories(test_config_assets PRIVATE ${CMAKE_SOURCE_DIR}/app/include)

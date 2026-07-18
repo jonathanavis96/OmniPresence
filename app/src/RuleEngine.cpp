@@ -142,7 +142,17 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
                                      const QString&              focusedProcessName,
                                      const IdleConfig&           idle) const
 {
-    // Priority 0 — input-idle override (AFK / Away-from-computer). Fires ahead of
+    // Priority 0 — custom override (the "Custom" tab). When the user has enabled
+    // it, AppController has already resolved the active preset / current cycle
+    // frame into this payload, and it wins over everything below — idle, pause,
+    // private mode, pins, integrations and all rules. It is the user explicitly
+    // choosing exactly what to broadcast, so (unlike idle) it is intentionally
+    // allowed to override the privacy controls. nullopt = override off or empty.
+    if (overrideState.customOverride.has_value()) {
+        return overrideState.customOverride.value();
+    }
+
+    // Priority 1 — input-idle override (AFK / Away-from-computer). Fires ahead of
     // pinned presence and normal rules so presence reflects "nobody is at the
     // keyboard" the instant the threshold is crossed. It must NOT override the
     // user's privacy controls, though: when updates are paused or private mode is
@@ -161,12 +171,12 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
         }
     }
 
-    // Priority 1 — manual pause or global private mode.
+    // Priority 2 — manual pause or global private mode.
     if (overrideState.paused || overrideState.privateMode) {
         return privateFallback();
     }
 
-    // Priority 2 — manually pinned presence.
+    // Priority 3 — manually pinned presence.
     if (overrideState.pinnedPresence.has_value()) {
         return overrideState.pinnedPresence.value();
     }
@@ -185,7 +195,7 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
         return p;
     };
 
-    // Priority 3 — deep integration context match (rule requires integration data).
+    // Priority 4 — deep integration context match (rule requires integration data).
     {
         const auto opt = matchRule(sorted, window, integrations,
                                    /*requireIntegration=*/true,
@@ -195,8 +205,8 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
         }
     }
 
-    // Priority 4 — specific user rule (any criteria, not just generic process).
-    // Priority 5 — browser domain/category rule — these are just regular rules
+    // Priority 5 — specific user rule (any criteria, not just generic process).
+    // Priority 6 — browser domain/category rule — these are just regular rules
     //              where matchBrowserDomain/Category is set; they are naturally
     //              less specific than rules with more criteria, so we rely on
     //              the user assigning lower priority values to them.
@@ -209,11 +219,11 @@ PresencePayload RuleEngine::evaluate(const WindowInfo&          window,
         }
     }
 
-    // Priority 6 — generic process rule (would have been caught above already;
+    // Priority 7 — generic process rule (would have been caught above already;
     //              this branch is intentionally left here for documentary clarity
     //              and in case the rule-matching strategy is tightened later).
 
-    // Priority 7 — no rule matched. Private mode is already handled at priority 1,
+    // Priority 8 — no rule matched. Private mode is already handled at priority 2,
     // so reaching here means private mode is OFF: show a generic, title-safe
     // presence for the active app rather than the private "Computer" fallback.
     return genericPresence(window);

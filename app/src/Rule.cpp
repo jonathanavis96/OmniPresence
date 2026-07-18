@@ -10,7 +10,7 @@ namespace OmniPresence {
 
 // ── Helper: enum <-> string ───────────────────────────────────────────────────
 
-static QString activityTypeToString(ActivityType t) {
+QString activityTypeToString(ActivityType t) {
     switch (t) {
         case ActivityType::Playing:   return QStringLiteral("Playing");
         case ActivityType::Listening: return QStringLiteral("Listening");
@@ -21,7 +21,7 @@ static QString activityTypeToString(ActivityType t) {
     return QStringLiteral("Playing");
 }
 
-static ActivityType activityTypeFromString(const QString& s) {
+ActivityType activityTypeFromString(const QString& s) {
     if (s == QLatin1String("Listening"))  return ActivityType::Listening;
     if (s == QLatin1String("Watching"))   return ActivityType::Watching;
     if (s == QLatin1String("Competing"))  return ActivityType::Competing;

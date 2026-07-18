@@ -1,14 +1,15 @@
 // RuleEngine.h — Evaluates the deterministic priority chain and produces a PresencePayload.
 //
 // Priority order (highest first):
-//  0. Input-idle override (AFK / Away-from-computer) — see IdleConfig below
-//  1. Manual pause / private override
-//  2. Manual pinned presence
-//  3. Deep integration context for the current active app
-//  4. Specific user rule (matched by process/title/domain/integration)
-//  5. Browser sanitised domain/category rule
-//  6. Generic process rule
-//  7. Private fallback (name="Computer", details="Working privately", state="Private")
+//  0. Custom override (the "Custom" tab) — ManualOverrideState::customOverride
+//  1. Input-idle override (AFK / Away-from-computer) — see IdleConfig below
+//  2. Manual pause / private override
+//  3. Manual pinned presence
+//  4. Deep integration context for the current active app
+//  5. Specific user rule (matched by process/title/domain/integration)
+//  6. Browser sanitised domain/category rule
+//  7. Generic process rule
+//  8. Private fallback (name="Computer", details="Working privately", state="Private")
 #pragma once
 
 #include "PresencePayload.h"
@@ -24,6 +25,14 @@ struct ManualOverrideState {
     bool               paused{false};
     bool               privateMode{false};
     std::optional<PresencePayload> pinnedPresence;   ///< Priority-2 pin.
+
+    /// Priority-0 custom override (the "Custom" tab): already resolved by
+    /// AppController to the active preset (Single mode) or current cycle frame
+    /// (Cycle mode). Present => it wins over EVERYTHING, including idle and the
+    /// pause/private controls, because the user explicitly enabled a presence to
+    /// broadcast. nullopt when the override is off or resolves to nothing (e.g.
+    /// a Cycle with no included presets), so we never publish an empty name.
+    std::optional<PresencePayload> customOverride;
 };
 
 /// Idle-tier override config (system input-idle -> AFK / Away-from-computer).
