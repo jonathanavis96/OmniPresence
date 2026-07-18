@@ -17,12 +17,14 @@ Page {
 
     property int selectedIndex: -1
     property var presetItems: []
+    property var libraryItems: []
     property var current: ({})
     property bool advancedOpen: false
     property string uploadStatus: ""
 
     function refreshList() {
         presetItems = AppController.customPresetsList()
+        libraryItems = AppController.customImageLibrary()
     }
     function loadCurrent() {
         current = (selectedIndex >= 0) ? AppController.customPresetAt(selectedIndex) : ({})
@@ -297,9 +299,11 @@ Page {
                         model: ["Playing", "Listening", "Watching", "Competing"]
                         currentIndex: Math.max(0, model.indexOf(root.current.activityType || "Playing"))
                         onActivated: root.setField("activityType", model[currentIndex])
+                        // The native ComboBox renders on a light background, so use
+                        // dark text (light text was invisible on it).
                         contentItem: Text {
                             text: activityCombo.displayText
-                            color: "#dbdee1"; font.pixelSize: 13
+                            color: "#1e1f22"; font.pixelSize: 13
                             leftPadding: 8; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
                         }
                     }
@@ -356,27 +360,19 @@ Page {
                             spacing: 6
                             TextField {
                                 Layout.fillWidth: true
-                                text: root.current.largeImageKey || ""
-                                placeholderText: "https://raw.githubusercontent.com/.../icon.png"
-                                onEditingFinished: root.setField("largeImageKey", text)
+                                text: root.current.largeImageText || ""
+                                placeholderText: "Icon name (shown on hover in Discord)"
+                                onEditingFinished: root.setField("largeImageText", text)
                                 color: "#dbdee1"
                                 background: Rectangle { radius: 4; color: "#1e1f22" }
                             }
-                            ComboBox {
-                                id: libraryCombo
+                            TextField {
                                 Layout.fillWidth: true
-                                textRole: "label"
-                                model: AppController.customImageLibrary()
-                                displayText: "Pick from library…"
-                                onActivated: {
-                                    var item = model[currentIndex]
-                                    if (item) root.setField("largeImageKey", item.url)
-                                }
-                                contentItem: Text {
-                                    text: libraryCombo.displayText
-                                    color: "#dbdee1"; font.pixelSize: 13
-                                    leftPadding: 8; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
-                                }
+                                text: root.current.largeImageKey || ""
+                                placeholderText: "https://…/icon.png  (or drag an image onto the box)"
+                                onEditingFinished: root.setField("largeImageKey", text)
+                                color: "#dbdee1"
+                                background: Rectangle { radius: 4; color: "#1e1f22" }
                             }
                         }
                     }
@@ -391,6 +387,68 @@ Page {
                         text: root.uploadStatus
                         color: root.uploadStatus.indexOf("⚠") === 0 ? "#ed4245" : "#23a55a"
                         font.pixelSize: 11
+                    }
+
+                    // 6b — Image library: every icon you've uploaded or pasted, shared
+                    //      across presets. Click to use it here; ▲▼ reorder; ✕ delete.
+                    Label2 { text: "Image library — click to use on this preset" }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: 460
+                        Layout.preferredHeight: Math.min(180, Math.max(1, root.libraryItems.length) * 42 + 8)
+                        color: "#1e1f22"; radius: 6
+
+                        Text {
+                            anchors.centerIn: parent
+                            visible: root.libraryItems.length === 0
+                            text: "No saved icons yet — drag an image onto the box above, or paste a URL."
+                            color: "#4f5660"; font.pixelSize: 11
+                        }
+
+                        ListView {
+                            anchors.fill: parent; anchors.margins: 4
+                            model: root.libraryItems
+                            clip: true; spacing: 2
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: ListView.view.width
+                                height: 38; radius: 4
+                                color: libHover.containsMouse ? "#2b2d31" : "transparent"
+
+                                MouseArea {
+                                    id: libHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.setField("largeImageKey", modelData.url)
+                                }
+
+                                RowLayout {
+                                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 6; rightMargin: 6 }
+                                    spacing: 8
+                                    Rectangle {
+                                        width: 26; height: 26; radius: 4; color: "#111214"; clip: true
+                                        Image {
+                                            anchors.fill: parent; anchors.margins: 1
+                                            fillMode: Image.PreserveAspectCrop
+                                            source: AppController.artSourceForKey(modelData.url)
+                                        }
+                                    }
+                                    Text {
+                                        text: modelData.label
+                                        color: (root.current.largeImageKey === modelData.url) ? "#5865f2" : "#dbdee1"
+                                        font.pixelSize: 12
+                                        Layout.fillWidth: true; elide: Text.ElideMiddle
+                                    }
+                                    LibBtn { text: "▲"; enabled: modelData.index > 0
+                                             onClicked: AppController.reorderCustomImage(modelData.index, modelData.index - 1) }
+                                    LibBtn { text: "▼"; enabled: modelData.index < root.libraryItems.length - 1
+                                             onClicked: AppController.reorderCustomImage(modelData.index, modelData.index + 1) }
+                                    LibBtn { text: "✕"; danger: true
+                                             onClicked: AppController.deleteCustomImage(modelData.index) }
+                                }
+                            }
+                        }
                     }
 
                     // 7 — Live preview: how Discord actually stacks the card
@@ -456,7 +514,6 @@ Page {
                         Layout.fillWidth: true
                         spacing: 10
 
-                        AdvRow { label: "Large image text"; value: root.current.largeImageText || ""; onCommit: root.setField("largeImageText", v) }
                         AdvRow { label: "Small image key";  value: root.current.smallImageKey || "";  onCommit: root.setField("smallImageKey", v) }
                         AdvRow { label: "Small image text"; value: root.current.smallImageText || ""; onCommit: root.setField("smallImageText", v) }
                     }
@@ -520,5 +577,19 @@ Page {
             background: Rectangle { radius: 4; color: "#1e1f22" }
             onEditingFinished: commit(text)
         }
+    }
+
+    // Small flat icon button for the image-library rows (▲ ▼ ✕).
+    component LibBtn: Button {
+        property bool danger: false
+        flat: true
+        implicitWidth: 24; implicitHeight: 24
+        contentItem: Text {
+            text: parent.text
+            color: !parent.enabled ? "#4f5660" : (parent.danger ? "#ed4245" : "#949ba4")
+            font.pixelSize: 11
+            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+        }
+        background: Item {}
     }
 }

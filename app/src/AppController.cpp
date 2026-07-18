@@ -786,6 +786,10 @@ void AppController::updateCustomPresetField(int index, const QString& field, con
     CustomOverrideConfig& cfg = m_configStore->customConfig();
     if (index < 0 || index >= cfg.presets.size()) return;
     applyCustomPresetField(cfg.presets[index], field, value);
+    // Setting a preset's icon URL adds it to the shared library so it can be
+    // picked on other presets.
+    if (field == QLatin1String("largeImageKey"))
+        addImageToLibraryIfNew(value.toString());
     commitCustomChange();
 }
 
@@ -808,9 +812,39 @@ void AppController::reorderCustomPreset(int from, int to) {
 
 QVariantList AppController::customImageLibrary() const {
     QVariantList out;
-    for (const CustomImageAsset& a : m_configStore->customConfig().imageLibrary)
-        out.append(QVariantMap{{QStringLiteral("label"), a.label}, {QStringLiteral("url"), a.url}});
+    const QList<CustomImageAsset>& lib = m_configStore->customConfig().imageLibrary;
+    for (int i = 0; i < lib.size(); ++i)
+        out.append(QVariantMap{
+            {QStringLiteral("index"), i},
+            {QStringLiteral("label"), lib.at(i).label},
+            {QStringLiteral("url"),   lib.at(i).url}});
     return out;
+}
+
+void AppController::deleteCustomImage(int index) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    if (index < 0 || index >= cfg.imageLibrary.size()) return;
+    cfg.imageLibrary.removeAt(index);   // presets already using the URL keep it
+    commitCustomChange();
+}
+
+void AppController::reorderCustomImage(int from, int to) {
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    const int n = cfg.imageLibrary.size();
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
+    cfg.imageLibrary.move(from, to);
+    commitCustomChange();
+}
+
+void AppController::addImageToLibraryIfNew(const QString& url, const QString& label) {
+    const QString u = url.trimmed();
+    if (!u.startsWith(QLatin1String("http://")) && !u.startsWith(QLatin1String("https://"))) return;
+    CustomOverrideConfig& cfg = m_configStore->customConfig();
+    for (const CustomImageAsset& a : cfg.imageLibrary)
+        if (a.url == u) return;                       // already in the library
+    QString name = label.isEmpty() ? QUrl(u).fileName() : label;
+    if (name.isEmpty()) name = u;
+    cfg.imageLibrary.append(CustomImageAsset{name, u});
 }
 
 void AppController::uploadPresetImage(int presetIndex, const QString& localPath) {
@@ -895,7 +929,7 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
             return;
         }
         cfg.presets[presetIndex].largeImageKey = url;
-        cfg.imageLibrary.append(CustomImageAsset{fileName, url});
+        addImageToLibraryIfNew(url, fileName);
         commitCustomChange();             // persist + refresh the page (icon updates)
         emit customUploadFinished(true, url);
     });

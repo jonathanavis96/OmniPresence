@@ -156,8 +156,12 @@ public:
     /// Move the preset at `from` to `to`, redefining both the single-mode picker
     /// order and the cycle sequence.
     Q_INVOKABLE void         reorderCustomPreset(int from, int to);
-    /// Reusable image library ([{label,url}]) offered as an icon dropdown.
+    /// Reusable image library ([{index,label,url}]) shown as a pickable list.
     Q_INVOKABLE QVariantList customImageLibrary() const;
+    /// Delete the library image at `index` (does not touch presets already using it).
+    Q_INVOKABLE void deleteCustomImage(int index);
+    /// Reorder the library image list (drives the pick-list order).
+    Q_INVOKABLE void reorderCustomImage(int from, int to);
     /// Upload a local image to catbox.moe (anonymous, no key); on success set it
     /// as preset `presetIndex`'s largeImageKey and append it to the image
     /// library. Async — emits customUploadFinished(ok, message) when done. The
@@ -250,6 +254,10 @@ private:
     /// Shared tail for every custom-config mutation: persist, notify QML, retune
     /// the cycle timer, and re-publish so the change is seen immediately.
     void commitCustomChange();
+
+    /// Append `url` to the image library if it is a new http(s) URL (dedup by
+    /// URL) so an icon set on one preset becomes pickable on the others.
+    void addImageToLibraryIfNew(const QString& url, const QString& label = QString());
 
     /// Append one human-readable line to presence-events.log on each real
     /// presence change (what published + the signals behind it). This is the
