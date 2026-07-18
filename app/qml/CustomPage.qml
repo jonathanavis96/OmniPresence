@@ -32,6 +32,14 @@ Page {
     function setField(field, value) {
         if (selectedIndex >= 0) AppController.updateCustomPresetField(selectedIndex, field, value)
     }
+    // Adjacent ▲/▼ swap: move selectedIndex with the preset so the editor keeps
+    // pointing at the same entry (otherwise the next field edit hits whatever
+    // preset got swapped into the old row).
+    function movePreset(from, to) {
+        if (selectedIndex === from)      selectedIndex = to
+        else if (selectedIndex === to)   selectedIndex = from
+        AppController.reorderCustomPreset(from, to)
+    }
 
     Component.onCompleted: refreshList()
 
@@ -202,7 +210,7 @@ Page {
                                     flat: true
                                     enabled: modelData.index > 0
                                     implicitWidth: 22; implicitHeight: 22
-                                    onClicked: AppController.reorderCustomPreset(modelData.index, modelData.index - 1)
+                                    onClicked: root.movePreset(modelData.index, modelData.index - 1)
                                     contentItem: Text {
                                         text: parent.text
                                         color: parent.enabled ? "#949ba4" : "#4f5660"
@@ -216,7 +224,7 @@ Page {
                                     flat: true
                                     enabled: modelData.index < root.presetItems.length - 1
                                     implicitWidth: 22; implicitHeight: 22
-                                    onClicked: AppController.reorderCustomPreset(modelData.index, modelData.index + 1)
+                                    onClicked: root.movePreset(modelData.index, modelData.index + 1)
                                     contentItem: Text {
                                         text: parent.text
                                         color: parent.enabled ? "#949ba4" : "#4f5660"

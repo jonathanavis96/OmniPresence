@@ -364,8 +364,12 @@ void AppController::evaluateAndPublish() {
 
     // Icon-backlog discovery: record every distinct foreground app (even when
     // the presence itself did not change) so we can see which apps still lack
-    // a custom icon. Cheap — dedups internally.
-    logAppCoverage(candidate);
+    // a custom icon. Cheap — dedups internally. Skip it while the custom override
+    // is active: `candidate` is then a fixed preset, not the focused app's
+    // resolved presence, so logging it would falsely mark whatever app the user
+    // is on as "covered" by the override and corrupt the backlog.
+    if (!m_overrideState.customOverride.has_value())
+        logAppCoverage(candidate);
 
     // Skip the Discord API call if nothing changed.
     if (candidate.isSamePresence(m_lastPublishedPresence)) return;
