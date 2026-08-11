@@ -671,16 +671,16 @@
       "matchBrowserCategory": "",
       "matchIntegrationSource": "",
       "activityType": "Playing",
-      "activityNameTemplate": "PDF Editor",
+      "activityNameTemplate": "PDF",
       "detailsTemplate": "",
       "stateTemplate": "",
       "largeImageKey": "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/pdfeditor.png",
-      "largeImageText": "PDF Editor",
+      "largeImageText": "PDF",
       "smallImageKey": "",
       "smallImageText": "",
       "timestampMode": "StartNow",
       "privacyLevel": "Public",
-      "name": "PDF Editor"
+      "name": "PDF"
     },
     {
       "enabled": true,

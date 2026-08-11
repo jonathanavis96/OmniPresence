@@ -10,10 +10,10 @@ filename is too generic to identify the product.
 
 Per-icon provenance is in the table below under "Source".
 
-Source log: `app-coverage.log` (76 lines, 49 distinct `NO ICON` exes).
+Source log: `app-coverage.log` (72 lines, 45 distinct `NO ICON` exes).
 Reference: `assets/icons/` (existing PNGs) and `config/omnipresence.example.json` (`rules[].matchProcessName`).
 
-**Totals: 49 distinct NO-ICON exes = 1 already covered + 31 worth an icon + 13 suppress + 4 suspicious.**
+**Totals: 45 distinct NO-ICON exes = 1 already covered + 31 worth an icon + 13 suppress.**
 
 ---
 
@@ -38,7 +38,7 @@ Real, user-facing apps someone would want shown. "Icon exists" means a PNG alrea
 | SyncTrayzor.exe | SyncTrayzor (Syncthing tray GUI) | SyncTrayzor | `syncthing` | Icon exists (`syncthing.png`) — needs rule only |
 | soffice.bin | LibreOffice | LibreOffice | `libreoffice` | Icon exists (`libreoffice.png`) — needs rule only |
 | Code.exe | Visual Studio Code | VS Code | `vscode` | Icon exists (`vscode.png`) — needs rule only |
-| pdfeditor.exe | unknown (generic "pdfeditor" filename — exact product unconfirmed) | PDF Editor | `pdfeditor` | Icon exists (`pdfeditor.png`) — needs rule only; confirm which PDF app this actually is |
+| pdfeditor.exe | left deliberately unidentified | PDF | `pdfeditor` | Rule name and icon are both **generic on purpose** (2026-08-11): a plain "PDF" label and a generic PDF-document icon, rather than naming whichever PDF app happens to own this executable. No identification needed. |
 | Odin3.exe | Samsung Odin (Android/S8+ flashing tool) | Odin3 | `odin3` | No icon yet |
 | SnakeTail.exe | SnakeTail (log-file tail viewer) | SnakeTail | `snaketail` | No icon yet |
 | PathOfExileSteam.exe | Path of Exile (Steam build) | Path of Exile | `path_of_exile` | No icon yet |
@@ -83,62 +83,14 @@ Windows internals, dialog hosts, and installer/crash-reporter noise — none of 
 | WerFault.exe | Windows Error Reporting crash handler |
 | Update.exe | Generic updater process |
 
-## 4. Suspicious / unknown (4)
-
-Names that don't match any recognizable product and look randomly generated. Flagged for manual inspection — not confirmed malware, just unusual.
-
-| Exe | Why it's flagged |
-|---|---|
-| Ftjccec Verehoj Mcimmjnqqc.exe | Multi-word string of unpronounceable syllables, not a real product name |
-| Wdebiyss.exe | Consonant-heavy random-looking name |
-| Maaefk.exe | Short random-looking name |
-| CHXSmartScreen.exe | Name mimics the legitimate Windows Defender "SmartScreen" component but isn't a known Microsoft binary — unclear origin |
-
----
-
-## Artwork provenance (the 14 that had no icon)
-
-All normalised to 512x512 RGBA PNG: trimmed, scaled so the longest side is 512
-(LANCZOS, never more than 2x upscale from source), centred on a transparent
-square canvas. Discord renders a white box for non-square or sub-512 art, hence
-the fixed canvas.
-
-| Icon file | Source | Native size |
-|---|---|---|
-| `obs.png` | `obs-studio/bin/64bit/obs64.exe` — PE `RT_GROUP_ICON` | 256 |
-| `tailscale.png` | `Tailscale/tailscale-ipn.exe` — PE icon | 256 |
-| `snaketail.png` | `SnakeTail/SnakeTail.exe` — PE icon | 128 |
-| `autohotkey.png` | `AutoHotkey/v2/AutoHotkey64.exe` — PE icon | 64 (see note) |
-| `openshot.png` | `openshot-qt.exe` — PE icon | 512 |
-| `path_of_exile.png` | `PathOfExile_x64Steam.exe` — PE icon | 256 |
-| `path_of_building.png` | `Path of Building.exe` — PE icon | 256 |
-| `awakened_poe_trade.png` | `Awakened PoE Trade.exe` — PE icon | 1024 |
-| `poesmoother.png` | `PoeSmoother.exe` (25.07 x64 build) — PE icon | 256 |
-| `odin3.png` | `Odin3.exe` — PE icon | 256 |
-| `monsgeek.png` | `MonsGeek Driver v4.exe` — PE icon | 256 |
-| `m365_copilot.png` | `Microsoft.MicrosoftOfficeHub` UWP package, `Square44x44Logo.targetsize-512_altform-unplated.png` | 512 |
-| `settings.png` | `Windows/ImmersiveControlPanel/images/logo.targetsize-256.png` | 256 |
-
-Notes:
-
-- **`autohotkey.png` is low-resolution.** AutoHotkey ships no icon larger than
-  64x64 in any of its binaries (v1.1, v2, UX, Ahk2Exe were all checked). It is
-  capped at a 2x upscale rather than stretched to fill the canvas, so it renders
-  as a smaller mark centred on the 512 canvas. Replace if better artwork
-  surfaces upstream.
-- **`path_of_exile.png` deliberately uses the executable's icon, not the Steam
-  library art.** The Steam `librarycache` logo carries current-league branding
-  ("Curse of the Allflame") and would date the icon every three months.
-- **`path_of_building.png` looks like overlapping tilted panels.** That is the
-  application's genuine icon, not a decoding artefact — confirmed by decoding
-  the 48x48 and 256x256 entries through two independent code paths.
-- `PoeSmoother.exe` and `PoeSmoother1.exe` get one rule each, both pointing at
-  `poesmoother.png`, because rules match a single process name.
-
 ## Count check
 
 - Worth an icon: 31
 - Already covered: 1
 - Suppress: 13
-- Suspicious: 4
-- **Total: 31 + 1 + 13 + 4 = 49** ✓ (matches the 49 distinct `NO ICON` exes in the log)
+- **Total: 31 + 1 + 13 = 45** ✓ (matches the 45 distinct `NO ICON` exes in the log)
+
+An earlier revision listed four more under "suspicious / unknown" — random-looking
+names that matched no product. They were **GameHelper**, the PoE overlay, and were
+never anything to worry about. Their lines have been removed from
+`app-coverage.log` so they stop being re-flagged; do not reintroduce them.
