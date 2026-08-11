@@ -264,9 +264,17 @@ bool ConfigStore::save() const {
 // field they sit in, rather than needing a per-field walk that a later field
 // would quietly escape. Idempotent: after the first load there is nothing left
 // to match.
+// The match is the complete upstream prefix, host and owner included, not just
+// the path tail: a fork's own .../<someone-else>/OmniPresence/omnipresence-work/
+// URL would otherwise be rewritten to that fork's main branch, and the next save
+// would persist the corruption.
 static QByteArray migrateAssetBranchUrls(const QByteArray& data) {
-    static const QByteArray kOld = "/OmniPresence/omnipresence-work/assets/icons/";
-    static const QByteArray kNew = "/OmniPresence/main/assets/icons/";
+    static const QByteArray kOld =
+        "https://raw.githubusercontent.com/jonathanavis96/OmniPresence"
+        "/omnipresence-work/assets/icons/";
+    static const QByteArray kNew =
+        "https://raw.githubusercontent.com/jonathanavis96/OmniPresence"
+        "/main/assets/icons/";
     if (!data.contains(kOld)) return data;
     QByteArray out = data;
     out.replace(kOld, kNew);

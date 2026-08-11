@@ -98,7 +98,12 @@ private slots:
         legacy += "    \"matchProcessName\": \"obs64.exe\",\n";
         legacy += "    \"largeImageKey\": \"";
         legacy += oldBase + "obs.png";
-        legacy += "\"\n  } ]\n}\n";
+        legacy += "\",\n";
+        // A fork's own artwork must survive untouched — migration is scoped to
+        // this project's URLs, not to any repository named OmniPresence.
+        legacy += "    \"smallImageKey\": \"https://raw.githubusercontent.com/acme"
+                  "/OmniPresence/omnipresence-work/assets/icons/fork.png\"\n";
+        legacy += "  } ]\n}\n";
 
         QFile f(path);
         QVERIFY(f.open(QIODevice::WriteOnly));
@@ -117,6 +122,8 @@ private slots:
         QCOMPARE(rules.size(), 1);
         QCOMPARE(rules.at(0).largeImageKey, QStringLiteral(
             "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/obs.png"));
+        QCOMPARE(rules.at(0).smallImageKey, QStringLiteral(
+            "https://raw.githubusercontent.com/acme/OmniPresence/omnipresence-work/assets/icons/fork.png"));
 
         // Idempotent: saving the migrated config and loading it again must be a
         // no-op, not a second rewrite.
