@@ -32,7 +32,7 @@ QString runeliteIconKey(const RuleSet& rules) {
         }
     }
     return QStringLiteral(
-        "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/osrs.png");
+        "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/osrs.png");
 }
 
 } // namespace

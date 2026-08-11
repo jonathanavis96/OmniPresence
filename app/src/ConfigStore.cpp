@@ -68,7 +68,7 @@ static AppSettings settingsFromJson(const QJsonObject& obj) {
 // OmniPresence uses full raw.githubusercontent URLs (not Discord portal asset
 // keys) as largeImageKey, same as every other rule's icon.
 static const QString kDefaultAwayImageKey = QStringLiteral(
-    "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png");
+    "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/away.png");
 
 static QJsonObject idleConfigToJson(const IdleConfig& cfg) {
     QJsonObject obj;

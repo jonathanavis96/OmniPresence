@@ -48,7 +48,7 @@ private slots:
         QCOMPARE(idle.afkLabel,     QStringLiteral("AFK"));
         QCOMPARE(idle.awayLabel,    QStringLiteral("Away from computer"));
         QCOMPARE(idle.awayImageKey, QStringLiteral(
-            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png"));
+            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/away.png"));
     }
 
     // A config file that omits the "idle" object entirely (or omits individual
