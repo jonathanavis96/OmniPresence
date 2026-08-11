@@ -202,7 +202,7 @@ private slots:
         idle.awaySeconds  = 600;
         idle.awayLabel    = QStringLiteral("Away from computer");
         idle.awayImageKey = QStringLiteral(
-            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png");
+            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/away.png");
 
         RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
         const PresencePayload p = engine.evaluate(win, integ, rules, ov, prev,
@@ -279,7 +279,7 @@ private slots:
         idle.awaySeconds  = 600;
         idle.awayLabel    = QStringLiteral("Away from computer");
         idle.awayImageKey = QStringLiteral(
-            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png");
+            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/away.png");
 
         RuleEngine engine; ManualOverrideState ov; PresencePayload prev;
         ov.paused = true;

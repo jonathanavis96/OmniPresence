@@ -68,7 +68,7 @@ signals:
 
 private:
     static QString resolveConfigPath();
-    bool parseJson(const QByteArray& data);
+    bool parseJson(const QByteArray& rawData);
     [[nodiscard]] QByteArray serialiseJson() const;
     /// Idempotent in-place upgrades of loaded rules (e.g. terminal title fallback).
     void migrateRuleTemplates();

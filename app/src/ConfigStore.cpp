@@ -68,7 +68,7 @@ static AppSettings settingsFromJson(const QJsonObject& obj) {
 // OmniPresence uses full raw.githubusercontent URLs (not Discord portal asset
 // keys) as largeImageKey, same as every other rule's icon.
 static const QString kDefaultAwayImageKey = QStringLiteral(
-    "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/omnipresence-work/assets/icons/away.png");
+    "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/away.png");
 
 static QJsonObject idleConfigToJson(const IdleConfig& cfg) {
     QJsonObject obj;
@@ -253,7 +253,36 @@ bool ConfigStore::save() const {
     return true;
 }
 
-bool ConfigStore::parseJson(const QByteArray& data) {
+// Artwork used to be served from the omnipresence-work branch. A config written
+// before that changed holds those URLs verbatim in every rule's image keys, in
+// idle.awayImageKey and in each custom preset — and parseJson takes persisted
+// values over the new defaults, so an upgraded install would keep resolving
+// against a branch that is no longer maintained (and loses every icon outright
+// if it is ever deleted).
+//
+// Rewriting the raw JSON before parsing migrates all of them at once, whatever
+// field they sit in, rather than needing a per-field walk that a later field
+// would quietly escape. Idempotent: after the first load there is nothing left
+// to match.
+// The match is the complete upstream prefix, host and owner included, not just
+// the path tail: a fork's own .../<someone-else>/OmniPresence/omnipresence-work/
+// URL would otherwise be rewritten to that fork's main branch, and the next save
+// would persist the corruption.
+static QByteArray migrateAssetBranchUrls(const QByteArray& data) {
+    static const QByteArray kOld =
+        "https://raw.githubusercontent.com/jonathanavis96/OmniPresence"
+        "/omnipresence-work/assets/icons/";
+    static const QByteArray kNew =
+        "https://raw.githubusercontent.com/jonathanavis96/OmniPresence"
+        "/main/assets/icons/";
+    if (!data.contains(kOld)) return data;
+    QByteArray out = data;
+    out.replace(kOld, kNew);
+    return out;
+}
+
+bool ConfigStore::parseJson(const QByteArray& rawData) {
+    const QByteArray data = migrateAssetBranchUrls(rawData);
     QJsonParseError err;
     const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
     if (err.error != QJsonParseError::NoError) {
