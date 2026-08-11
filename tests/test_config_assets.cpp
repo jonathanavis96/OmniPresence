@@ -77,6 +77,56 @@ private slots:
         QCOMPARE(idle.awayLabel,   QStringLiteral("Away from computer"));
     }
 
+    // A config written while artwork lived on the omnipresence-work branch must
+    // be migrated to main on load — persisted values beat the new defaults, so
+    // without this an upgraded install keeps pointing at a branch that is no
+    // longer maintained. Covers both a rule image key and idle.awayImageKey,
+    // since the two are read by completely different code paths.
+    void assetUrlsMigrateFromWorkBranchToMain() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString path = tmp.filePath(QStringLiteral("legacy-urls.json"));
+
+        const QByteArray oldBase =
+            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence"
+            "/omnipresence-work/assets/icons/";
+        QByteArray legacy;
+        legacy += "{\n  \"idle\": { \"awayImageKey\": \"";
+        legacy += oldBase + "away.png";
+        legacy += "\" },\n  \"rules\": [ {\n";
+        legacy += "    \"enabled\": true, \"priority\": 1, \"name\": \"OBS\",\n";
+        legacy += "    \"matchProcessName\": \"obs64.exe\",\n";
+        legacy += "    \"largeImageKey\": \"";
+        legacy += oldBase + "obs.png";
+        legacy += "\"\n  } ]\n}\n";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(legacy);
+        f.close();
+
+        ConfigStore a;
+        a.setConfigPathForTest(path);
+        QVERIFY(a.load());
+
+        const QString expectedAway = QStringLiteral(
+            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/away.png");
+        QCOMPARE(a.idleConfig().awayImageKey, expectedAway);
+
+        const QList<Rule> rules = a.ruleSet().rules();
+        QCOMPARE(rules.size(), 1);
+        QCOMPARE(rules.at(0).largeImageKey, QStringLiteral(
+            "https://raw.githubusercontent.com/jonathanavis96/OmniPresence/main/assets/icons/obs.png"));
+
+        // Idempotent: saving the migrated config and loading it again must be a
+        // no-op, not a second rewrite.
+        QVERIFY(a.save());
+        ConfigStore b;
+        b.setConfigPathForTest(path);
+        QVERIFY(b.load());
+        QCOMPARE(b.idleConfig().awayImageKey, expectedAway);
+    }
+
     // GUI-persisted idle config round-trips through save()/load().
     void idleConfigRoundTrip() {
         QTemporaryDir tmp;
