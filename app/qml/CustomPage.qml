@@ -37,34 +37,63 @@ Page {
     // Coalesce keystrokes instead: hold the latest value per field and commit once
     // the user pauses. This also stops a full config save + Discord republish
     // firing on every single keypress.
+    // Pending edits belong to the preset that was selected when they were typed,
+    // NOT to whatever is selected when the timer happens to fire. Selecting
+    // another preset mid-debounce would otherwise write A's text into B and
+    // leave A unchanged, so the owning index is tracked alongside the values and
+    // every path that could change or destroy the selection flushes first.
     property var pendingFields: ({})
+    property int pendingIndex: -1
+    /// Commit any queued edits to the preset that owns them, immediately.
+    function flushPending() {
+        commitDebounce.stop()
+        if (pendingIndex < 0) return
+        var idx = pendingIndex, fields = pendingFields
+        root.pendingIndex = -1
+        root.pendingFields = ({})
+        for (var f in fields)
+            AppController.updateCustomPresetField(idx, f, fields[f])
+    }
+    /// Drop queued edits without committing — for when the owning preset is gone.
+    function discardPending() {
+        commitDebounce.stop()
+        root.pendingIndex = -1
+        root.pendingFields = ({})
+    }
     Timer {
         id: commitDebounce
         interval: 350
-        onTriggered: {
-            if (root.selectedIndex < 0) return
-            for (var f in root.pendingFields)
-                AppController.updateCustomPresetField(root.selectedIndex, f, root.pendingFields[f])
-            root.pendingFields = ({})
-        }
+        onTriggered: root.flushPending()
     }
     function setField(field, value) {
         if (selectedIndex < 0) return
+        // Switching presets between keystrokes: land the previous preset's edits
+        // before starting a new batch against this one.
+        if (pendingIndex >= 0 && pendingIndex !== selectedIndex) flushPending()
+        root.pendingIndex = selectedIndex
         root.pendingFields[field] = value
         commitDebounce.restart()
     }
     /// Non-text edits (checkboxes, combos) have no typing to lose — commit at once
-    /// so the change reaches Discord without waiting on the debounce.
+    /// so the change reaches Discord without waiting on the debounce. Queued text
+    /// edits are flushed rather than dropped; they are the user's work too.
     function setFieldNow(field, value) {
         if (selectedIndex < 0) return
-        commitDebounce.stop()
-        root.pendingFields = ({})
+        flushPending()
         AppController.updateCustomPresetField(selectedIndex, field, value)
     }
+    // A selection change can also come from the list, ▲/▼ or deletion rather than
+    // from setField, so flush here as the backstop.
+    onSelectedIndexChanged: if (pendingIndex >= 0 && pendingIndex !== selectedIndex) flushPending()
+    // Main.qml destroys this page on navigation, and app shutdown destroys it
+    // outright — either would take the timer and the queued edit with it.
+    Component.onDestruction: flushPending()
     // Adjacent ▲/▼ swap: move selectedIndex with the preset so the editor keeps
     // pointing at the same entry (otherwise the next field edit hits whatever
     // preset got swapped into the old row).
     function movePreset(from, to) {
+        // Indices are about to shift under any queued edit — land it first.
+        flushPending()
         if (selectedIndex === from)      selectedIndex = to
         else if (selectedIndex === to)   selectedIndex = from
         AppController.reorderCustomPreset(from, to)
@@ -601,7 +630,11 @@ Page {
                         }
                         Button {
                             text: "Delete"
-                            onClicked: { AppController.deleteCustomPreset(root.selectedIndex); root.selectedIndex = -1 }
+                            // Discard, never flush: the preset these edits belong
+                            // to is about to stop existing, and committing them
+                            // after the delete would land them on whichever
+                            // preset shifted into that index.
+                            onClicked: { root.discardPending(); AppController.deleteCustomPreset(root.selectedIndex); root.selectedIndex = -1 }
                             background: Rectangle { radius: 6; color: parent.hovered ? "#b32222" : "#ed4245" }
                             contentItem: Text { text: parent.text; color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                             implicitWidth: 100; implicitHeight: 36
