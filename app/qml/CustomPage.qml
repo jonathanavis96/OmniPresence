@@ -29,8 +29,37 @@ Page {
     function loadCurrent() {
         current = (selectedIndex >= 0) ? AppController.customPresetAt(selectedIndex) : ({})
     }
+    // Every committed edit re-emits customChanged, which reloads `current` and so
+    // re-evaluates any `text: root.current.<field>` binding — overwriting what the
+    // user is mid-way through typing. A space was reliably the newest character
+    // when that echo landed, so "Path of Exile" persisted as "PathofExile".
+    //
+    // Coalesce keystrokes instead: hold the latest value per field and commit once
+    // the user pauses. This also stops a full config save + Discord republish
+    // firing on every single keypress.
+    property var pendingFields: ({})
+    Timer {
+        id: commitDebounce
+        interval: 350
+        onTriggered: {
+            if (root.selectedIndex < 0) return
+            for (var f in root.pendingFields)
+                AppController.updateCustomPresetField(root.selectedIndex, f, root.pendingFields[f])
+            root.pendingFields = ({})
+        }
+    }
     function setField(field, value) {
-        if (selectedIndex >= 0) AppController.updateCustomPresetField(selectedIndex, field, value)
+        if (selectedIndex < 0) return
+        root.pendingFields[field] = value
+        commitDebounce.restart()
+    }
+    /// Non-text edits (checkboxes, combos) have no typing to lose — commit at once
+    /// so the change reaches Discord without waiting on the debounce.
+    function setFieldNow(field, value) {
+        if (selectedIndex < 0) return
+        commitDebounce.stop()
+        root.pendingFields = ({})
+        AppController.updateCustomPresetField(selectedIndex, field, value)
     }
     // Adjacent ▲/▼ swap: move selectedIndex with the preset so the editor keeps
     // pointing at the same entry (otherwise the next field edit hits whatever
@@ -103,15 +132,20 @@ Page {
                         checked: AppController.customMode === "cycle"
                         onToggled: if (checked) AppController.customMode = "cycle"
                     }
+                    // SpinBox is integer-only, so it counts TENTHS of a second and
+                    // displays seconds. Floor of 5 (=0.5 s) matches the backend clamp.
                     SpinBox {
                         id: intervalSpin
                         visible: AppController.customMode === "cycle"
-                        from: 1
-                        to: 3600
-                        value: AppController.customIntervalSeconds
-                        textFromValue: function(value, locale) { return value + " s" }
-                        valueFromText: function(text, locale) { return parseInt(text) || 1 }
-                        onValueModified: AppController.customIntervalSeconds = value
+                        from: 5
+                        to: 36000
+                        stepSize: 5
+                        value: Math.round(AppController.customIntervalSeconds * 10)
+                        textFromValue: function(value, locale) { return (value / 10).toFixed(1) + " s" }
+                        valueFromText: function(text, locale) {
+                            return Math.max(5, Math.round((parseFloat(text) || 1) * 10))
+                        }
+                        onValueModified: AppController.customIntervalSeconds = value / 10
                     }
                 }
             }
@@ -171,7 +205,16 @@ Page {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: { root.selectedIndex = modelData.index; root.loadCurrent() }
+                                // Clicking a row selects it for editing AND, in Single
+                                // mode, makes it the preset that publishes. Requiring a
+                                // separate radio toggle meant clicking a preset appeared
+                                // to do nothing while a stale one stayed on screen.
+                                onClicked: {
+                                    root.selectedIndex = modelData.index
+                                    root.loadCurrent()
+                                    if (AppController.customMode === "single")
+                                        AppController.customActiveIndex = modelData.index
+                                }
                             }
 
                             RowLayout {
@@ -257,7 +300,11 @@ Page {
                     Label2 { text: "Label (shown in the list here — not on Discord)" }
                     TextField {
                         Layout.fillWidth: true
-                        text: root.current.label || ""
+                        // Load from the model only when this field is NOT being typed in,
+                        // so a commit echo can never overwrite live input.
+                        readonly property string modelValue: root.current.label || ""
+                        onModelValueChanged: if (!activeFocus) text = modelValue
+                        Component.onCompleted: text = modelValue
                         placeholderText: "e.g. Working, AFK, Streaming"
                         placeholderTextColor: "#6d6f78"
                         onTextEdited: root.setField("label", text)
@@ -269,7 +316,11 @@ Page {
                     Label2 { text: "Name (what Discord shows)" }
                     TextField {
                         Layout.fillWidth: true
-                        text: root.current.name || ""
+                        // Load from the model only when this field is NOT being typed in,
+                        // so a commit echo can never overwrite live input.
+                        readonly property string modelValue: root.current.name || ""
+                        onModelValueChanged: if (!activeFocus) text = modelValue
+                        Component.onCompleted: text = modelValue
                         placeholderText: "e.g. hello"
                         placeholderTextColor: "#6d6f78"
                         onTextEdited: root.setField("name", text)
@@ -287,7 +338,11 @@ Page {
                     Label2 { text: "Details" }
                     TextField {
                         Layout.fillWidth: true
-                        text: root.current.details || ""
+                        // Load from the model only when this field is NOT being typed in,
+                        // so a commit echo can never overwrite live input.
+                        readonly property string modelValue: root.current.details || ""
+                        onModelValueChanged: if (!activeFocus) text = modelValue
+                        Component.onCompleted: text = modelValue
                         onTextEdited: root.setField("details", text)
                         color: "#dbdee1"
                         background: Rectangle { radius: 4; color: "#1e1f22" }
@@ -295,7 +350,11 @@ Page {
                     Label2 { text: "State" }
                     TextField {
                         Layout.fillWidth: true
-                        text: root.current.state || ""
+                        // Load from the model only when this field is NOT being typed in,
+                        // so a commit echo can never overwrite live input.
+                        readonly property string modelValue: root.current.state || ""
+                        onModelValueChanged: if (!activeFocus) text = modelValue
+                        Component.onCompleted: text = modelValue
                         onTextEdited: root.setField("state", text)
                         color: "#dbdee1"
                         background: Rectangle { radius: 4; color: "#1e1f22" }

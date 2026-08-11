@@ -7,6 +7,8 @@
 #include <QNetworkReply>
 #include <QHttpMultiPart>
 #include <QHttpPart>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QFileInfo>
 #include "DiscordPresenceClient.h"
 #include "LocalContextServer.h"
@@ -22,6 +24,8 @@
 #include <QProcess>
 #include <QDesktopServices>
 #include <QColor>
+#include <QImage>
+#include "ArtStore.h"
 #include <QFile>
 #include <QTextStream>
 #include <QMutex>
@@ -674,7 +678,7 @@ static void applyCustomPresetField(CustomPreset& p, const QString& field, const 
 
 bool    AppController::customEnabled()         const noexcept { return m_configStore->customConfig().enabled; }
 int     AppController::customActiveIndex()     const noexcept { return m_configStore->customConfig().activeIndex; }
-int     AppController::customIntervalSeconds() const noexcept { return m_configStore->customConfig().intervalSeconds; }
+double  AppController::customIntervalSeconds() const noexcept { return m_configStore->customConfig().intervalSeconds; }
 QString AppController::customMode() const {
     return m_configStore->customConfig().mode == CustomMode::Cycle
         ? QStringLiteral("cycle") : QStringLiteral("single");
@@ -703,7 +707,7 @@ void AppController::reconfigureCustomTimer() {
                       && cfg.cycleIndices().size() > 1;
     if (cycling) {
         if (!m_customFrameTimer->isActive()) m_customFrameIndex = 0;
-        m_customFrameTimer->start(std::max(1, cfg.intervalSeconds) * 1000);
+        m_customFrameTimer->start(int(std::max(0.5, cfg.intervalSeconds) * 1000.0));
     } else {
         m_customFrameTimer->stop();
     }
@@ -746,10 +750,12 @@ void AppController::setCustomActiveIndex(int index) {
     commitCustomChange();
 }
 
-void AppController::setCustomIntervalSeconds(int seconds) {
+void AppController::setCustomIntervalSeconds(double seconds) {
     CustomOverrideConfig& cfg = m_configStore->customConfig();
-    const int clamped = std::max(1, seconds);
-    if (cfg.intervalSeconds == clamped) return;
+    // 0.5 s is the floor: fast enough to feel instant, slow enough that the
+    // cycle can't spam Discord with sub-frame updates.
+    const double clamped = std::max(0.5, seconds);
+    if (qFuzzyCompare(cfg.intervalSeconds, clamped)) return;
     cfg.intervalSeconds = clamped;
     commitCustomChange();
 }
@@ -870,6 +876,24 @@ void AppController::addImageToLibraryIfNew(const QString& url, const QString& la
     cfg.imageLibrary.append(CustomImageAsset{name, u});
 }
 
+QString AppController::normalizeForUpload(const QString& srcPath) const {
+    const QString dir = QDir::tempPath() + QStringLiteral("/OmniPresence-upload");
+    const QString out = QDir(dir).filePath(
+        QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".png"));
+
+    QString err;
+    if (!ArtStore::normalizeSquarePng(srcPath, out, &err)) {
+        qWarning() << "[AppController] Upload normalization failed:" << err;
+        return {};
+    }
+
+    const QImage src(srcPath);
+    qDebug() << "[AppController] Normalized upload image" << srcPath
+             << QStringLiteral("(%1x%2)").arg(src.width()).arg(src.height())
+             << "-> 1024x1024 ->" << out;
+    return out;
+}
+
 void AppController::uploadPresetImage(int presetIndex, const QString& localPath) {
     // Validate the target preset and file up-front so we never fire a network
     // request we can't use the result of.
@@ -894,60 +918,142 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
         return;
     }
 
-    QFile* file = new QFile(info.absoluteFilePath());
+    // Discord rejects Rich Presence art that isn't at least 512x512, and renders
+    // it square. Uploading the raw dragged file therefore yields a white box with
+    // a question mark for any off-size image (e.g. a 329x360 logo). Normalize to
+    // a 1024x1024 PNG first and upload THAT. Pad rather than centre-crop, so a
+    // wide or tall logo keeps its edges instead of losing them to the crop.
+    const QString normalized = normalizeForUpload(info.absoluteFilePath());
+    if (normalized.isEmpty()) {
+        emit customUploadFinished(false,
+            QStringLiteral("Not a readable image: %1").arg(info.fileName()));
+        return;
+    }
+
+    QFile* file = new QFile(normalized);
     if (!file->open(QIODevice::ReadOnly)) {
         emit customUploadFinished(false, QStringLiteral("Could not open %1").arg(info.fileName()));
         delete file;
         return;
     }
 
+    file->close();
+    delete file;                          // each attempt opens its own handle
+
+    // Hand off to the provider chain. The file is deleted once the chain ends.
+    uploadToHost(0, normalized, targetId, info.fileName(), info.completeBaseName());
+}
+
+// Anonymous image hosts, in preference order. Discord's image proxy refuses to
+// fetch some hosts outright — files.catbox.moe is blocklisted, so every icon
+// uploaded there rendered as a white question mark however well-formed the PNG
+// was. There is no way to detect that from the upload response (catbox returns a
+// perfectly good URL), so we cannot rely on any single host staying usable.
+//
+// Hence a chain: try each in turn, and treat a host as failed if the URL it hands
+// back doesn't fetch as an image. Verified against Discord on 2026-08-11 —
+// kappa.lol, litterbox and uguu all render; files.catbox.moe and qu.ax do not.
+// kappa.lol leads because it is the only working host without an expiry.
+const QList<AppController::UploadHost>& AppController::uploadHosts() {
+    static const QList<UploadHost> hosts = {
+        // name          endpoint                                                     filePart    extra                             json
+        {QStringLiteral("kappa.lol"),  QStringLiteral("https://kappa.lol/api/upload"), QStringLiteral("file"),         {},                                                                     QStringLiteral("link")},
+        {QStringLiteral("litterbox"),  QStringLiteral("https://litterbox.catbox.moe/resources/internals/api.php"), QStringLiteral("fileToUpload"), {{QStringLiteral("reqtype"), QStringLiteral("fileupload")}, {QStringLiteral("time"), QStringLiteral("72h")}}, {}},
+        {QStringLiteral("uguu.se"),    QStringLiteral("https://uguu.se/upload?output=text"), QStringLiteral("files[]"), {},                                                                    {}},
+    };
+    return hosts;
+}
+
+void AppController::uploadToHost(int hostIndex, const QString& normalized,
+                                 const QString& targetId, const QString& fileName,
+                                 const QString& baseName) {
+    const QList<UploadHost>& hosts = uploadHosts();
+    if (hostIndex >= hosts.size()) {
+        QFile::remove(normalized);
+        emit customUploadFinished(false,
+            QStringLiteral("Upload failed: no image host accepted the file."));
+        return;
+    }
+    const UploadHost& host = hosts.at(hostIndex);
+
+    auto* file = new QFile(normalized);
+    if (!file->open(QIODevice::ReadOnly)) {
+        delete file;
+        QFile::remove(normalized);
+        emit customUploadFinished(false, QStringLiteral("Could not open %1").arg(fileName));
+        return;
+    }
+
     if (!m_netManager) m_netManager = new QNetworkAccessManager(this);
 
-    // catbox.moe anonymous upload: multipart POST, reqtype=fileupload +
-    // fileToUpload; the response body is the direct file URL (no API key).
     auto* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
-
-    QHttpPart reqTypePart;
-    reqTypePart.setHeader(QNetworkRequest::ContentDispositionHeader,
-                          QStringLiteral("form-data; name=\"reqtype\""));
-    reqTypePart.setBody(QByteArrayLiteral("fileupload"));
-    multiPart->append(reqTypePart);
+    for (auto it = host.extraFields.cbegin(); it != host.extraFields.cend(); ++it) {
+        QHttpPart part;
+        part.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QStringLiteral("form-data; name=\"%1\"").arg(it.key()));
+        part.setBody(it.value().toUtf8());
+        multiPart->append(part);
+    }
 
     QHttpPart filePart;
+    // normalizeForUpload() always emits PNG, so the part name and Content-Type
+    // are fixed — no extension sniffing needed. Keep the user's base name so the
+    // resulting URL stays recognisable in the library list.
     filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
-                       QStringLiteral("form-data; name=\"fileToUpload\"; filename=\"%1\"").arg(info.fileName()));
-    // catbox 500s a file part with no Content-Type; curl sends one, so mirror it.
-    // Map the common image extensions; fall back to octet-stream like curl does.
-    const QString ext = info.suffix().toLower();
-    const QString mime = ext == QLatin1String("png")  ? QStringLiteral("image/png")
-                       : ext == QLatin1String("jpg") || ext == QLatin1String("jpeg") ? QStringLiteral("image/jpeg")
-                       : ext == QLatin1String("gif")  ? QStringLiteral("image/gif")
-                       : ext == QLatin1String("webp") ? QStringLiteral("image/webp")
-                       : QStringLiteral("application/octet-stream");
-    filePart.setHeader(QNetworkRequest::ContentTypeHeader, mime);
+                       QStringLiteral("form-data; name=\"%1\"; filename=\"%2.png\"")
+                           .arg(host.filePartName, baseName));
+    // catbox-family hosts 500 a file part with no Content-Type; curl sends one.
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("image/png"));
     file->setParent(multiPart);          // multiPart owns the file lifetime
     filePart.setBodyDevice(file);
     multiPart->append(filePart);
 
-    QNetworkRequest request(QUrl(QStringLiteral("https://catbox.moe/user/api.php")));
-    QNetworkReply* reply = m_netManager->post(request, multiPart);
+    QNetworkReply* reply = m_netManager->post(QNetworkRequest(QUrl(host.endpoint)), multiPart);
     multiPart->setParent(reply);          // reply owns the multiPart
 
-    const QString fileName = info.fileName();
-    connect(reply, &QNetworkReply::finished, this, [this, reply, targetId, fileName]() {
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, hostIndex, normalized, targetId, fileName, baseName]() {
         reply->deleteLater();
+        const UploadHost& h = uploadHosts().at(hostIndex);
         const QString body = QString::fromUtf8(reply->readAll()).trimmed();
-        const QString url  = body;   // catbox's success body IS the direct URL
-        const bool looksLikeUrl = url.startsWith(QLatin1String("https://"))
-                               || url.startsWith(QLatin1String("http://"));
 
-        if (!looksLikeUrl) {
-            // Surface the real reason: prefer catbox's response body (it often
-            // carries a human error string), else the transport error string.
-            const QString detail = body.isEmpty() ? reply->errorString() : body.left(160);
-            emit customUploadFinished(false, QStringLiteral("Upload failed: %1").arg(detail));
+        // Plain-text hosts return the URL as the whole body; JSON hosts nest it.
+        QString url = body;
+        if (!h.jsonUrlField.isEmpty())
+            url = QJsonDocument::fromJson(body.toUtf8()).object()
+                      .value(h.jsonUrlField).toString();
+
+        if (!url.startsWith(QLatin1String("http"))) {
+            qWarning() << "[AppController] Upload host" << h.name << "rejected the file:"
+                       << (body.isEmpty() ? reply->errorString() : body.left(160));
+            uploadToHost(hostIndex + 1, normalized, targetId, fileName, baseName);
             return;
         }
+        verifyAndAdopt(hostIndex, url, normalized, targetId, fileName, baseName);
+    });
+}
+
+// A host can return a valid-looking URL that nonetheless doesn't serve an image
+// (qu.ax does exactly this, and its links render nowhere). Fetch it once before
+// committing it to a preset, so a bad host falls through to the next instead of
+// silently planting a question mark in the user's Discord status.
+void AppController::verifyAndAdopt(int hostIndex, const QString& url,
+                                   const QString& normalized, const QString& targetId,
+                                   const QString& fileName, const QString& baseName) {
+    QNetworkReply* check = m_netManager->get(QNetworkRequest(QUrl(url)));
+    connect(check, &QNetworkReply::finished, this,
+            [this, check, hostIndex, url, normalized, targetId, fileName, baseName]() {
+        check->deleteLater();
+        const QString type = check->header(QNetworkRequest::ContentTypeHeader).toString();
+        if (check->error() != QNetworkReply::NoError || !type.startsWith(QLatin1String("image/"))) {
+            qWarning() << "[AppController] Upload host" << uploadHosts().at(hostIndex).name
+                       << "returned an unusable URL" << url << "content-type" << type;
+            uploadToHost(hostIndex + 1, normalized, targetId, fileName, baseName);
+            return;
+        }
+
+        // The normalized copy existed only to be uploaded; the host now holds it.
+        QFile::remove(normalized);
 
         // Re-find the target preset by id — the list may have been reordered or
         // had rows deleted while the upload was in flight.
@@ -956,7 +1062,8 @@ void AppController::uploadPresetImage(int presetIndex, const QString& localPath)
         for (int i = 0; i < cfg.presets.size(); ++i)
             if (cfg.presets.at(i).id == targetId) { idx = i; break; }
         if (idx < 0) {
-            emit customUploadFinished(false, QStringLiteral("Preset no longer exists — copy this URL: %1").arg(url));
+            emit customUploadFinished(false,
+                QStringLiteral("Preset no longer exists — copy this URL: %1").arg(url));
             return;
         }
         cfg.presets[idx].largeImageKey = url;

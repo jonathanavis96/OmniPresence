@@ -126,7 +126,7 @@ private slots:
         CustomOverrideConfig& cfg = a.customConfig();
         cfg.enabled         = true;
         cfg.mode            = CustomMode::Cycle;
-        cfg.intervalSeconds = 7;
+        cfg.intervalSeconds = 7.5;
         CustomPreset p1; p1.label = QStringLiteral("Hi"); p1.name = QStringLiteral("hello");
         p1.largeImageKey = QStringLiteral("https://files.catbox.moe/a.png"); p1.includeInCycle = true;
         CustomPreset p2; p2.label = QStringLiteral("Bye"); p2.name = QStringLiteral("goodbye");
@@ -141,7 +141,7 @@ private slots:
         const CustomOverrideConfig& r = b.customConfig();
         QCOMPARE(r.enabled,         true);
         QCOMPARE(r.mode,            CustomMode::Cycle);
-        QCOMPARE(r.intervalSeconds, 7);
+        QCOMPARE(r.intervalSeconds, 7.5);
         QCOMPARE(r.presets.size(),  2);
         QCOMPARE(r.presets.at(0).name,           QStringLiteral("hello"));
         QCOMPARE(r.presets.at(0).largeImageKey,  QStringLiteral("https://files.catbox.moe/a.png"));
@@ -156,9 +156,10 @@ private slots:
         QCOMPARE(r.imageLibrary.at(0).url,       QStringLiteral("https://files.catbox.moe/a.png"));
     }
 
-    // intervalSeconds is clamped to a minimum of 1 on load (a 0/negative value in
-    // config must not produce a zero-interval timer).
-    void customIntervalClampedToMinimumOne() {
+    // intervalSeconds is clamped to a minimum of 0.5 on load (a 0/negative value
+    // in config must not produce a zero-interval timer). Sub-second cycling is
+    // supported, so the floor is half a second rather than a whole one.
+    void customIntervalClampedToMinimumHalfSecond() {
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
         const QString path = tmp.filePath(QStringLiteral("custom-interval.json"));
@@ -170,7 +171,7 @@ private slots:
         ConfigStore a;
         a.setConfigPathForTest(path);
         QVERIFY(a.load());
-        QCOMPARE(a.customConfig().intervalSeconds, 1);
+        QCOMPARE(a.customConfig().intervalSeconds, 0.5);
     }
 
     // resolve() maps a preset to a payload, but returns nullopt for a blank name

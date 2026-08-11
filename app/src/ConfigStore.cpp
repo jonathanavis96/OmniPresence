@@ -166,7 +166,7 @@ static CustomOverrideConfig customConfigFromJson(const QJsonObject& obj) {
     cfg.enabled         = obj[QStringLiteral("enabled")].toBool(false);
     cfg.mode            = customModeFromString(obj[QStringLiteral("mode")].toString());
     cfg.activeIndex     = obj[QStringLiteral("activeIndex")].toInt(0);
-    cfg.intervalSeconds = std::max(1, obj[QStringLiteral("intervalSeconds")].toInt(4));
+    cfg.intervalSeconds = std::max(0.5, obj[QStringLiteral("intervalSeconds")].toDouble(4.0));
 
     const QJsonArray presets = obj[QStringLiteral("presets")].toArray();
     for (const QJsonValue& v : presets) cfg.presets.append(customPresetFromJson(v.toObject()));

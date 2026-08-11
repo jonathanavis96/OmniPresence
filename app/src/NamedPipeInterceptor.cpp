@@ -14,6 +14,7 @@
 #ifdef Q_OS_WIN
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <cstdlib>
@@ -91,6 +92,30 @@ static bool pipeIoTimed(HANDLE h, bool write, void* buf, DWORD n, DWORD waitMs)
     return result;
 }
 
+// Non-zero while this process is probing its own pipe in discordRivalOnIpc0().
+//
+// The probe deliberately connects to ipc-0 and handshakes with RuneLite's real
+// app id, so from serviceClient()'s point of view it is indistinguishable from
+// the actual RuneLite plugin connecting. With a 5-attempt probe on a ~10s
+// watchdog that is 30 self-connections a minute, each writing a full
+// CONNECTED / HANDSHAKE / READY / DISCONNECTED block to the log — thousands of
+// lines an hour that look exactly like a real client thrashing, which is
+// actively misleading when diagnosing anything else.
+//
+// serviceClient() consults this to log its own probes at a quieter level. It is
+// only ever used to decide how loudly to log; the wire protocol and the rival
+// detection itself are unchanged.
+static std::atomic<int> g_selfProbeInFlight{0};
+
+/// RAII guard so an early `continue`/return inside the probe loop can never
+/// leave the counter stuck non-zero (which would silence real clients).
+namespace {
+struct SelfProbeScope {
+    SelfProbeScope()  { g_selfProbeInFlight.fetch_add(1, std::memory_order_relaxed); }
+    ~SelfProbeScope() { g_selfProbeInFlight.fetch_sub(1, std::memory_order_relaxed); }
+};
+} // namespace
+
 // Definitively detect a RIVAL Discord server coexisting on discord-ipc-0.
 //
 // discordPipeAlreadyServed() cannot do this once WE serve ipc-0: a client probe
@@ -108,6 +133,8 @@ static bool discordRivalOnIpc0()
     constexpr int   kAttempts  = 5;
     constexpr DWORD kWaitMs    = 500;
     const std::wstring name    = discordPipeName(0);
+
+    const SelfProbeScope probeScope;
 
     for (int i = 0; i < kAttempts; ++i) {
         HANDLE h = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
@@ -687,7 +714,13 @@ void NamedPipeInterceptor::reapFinishedThreads()
 
 void NamedPipeInterceptor::serviceClient(HANDLE pipe)
 {
-    qDebug() << "[NamedPipeInterceptor] CLIENT CONNECTED.";
+    // Our own rival-detection probe connects here 30x/minute using RuneLite's
+    // app id. Logging those as ordinary clients buries every real event, so
+    // stay quiet for the duration of a probe (see g_selfProbeInFlight).
+    const bool selfProbe = g_selfProbeInFlight.load(std::memory_order_relaxed) > 0;
+    if (!selfProbe) {
+        qDebug() << "[NamedPipeInterceptor] CLIENT CONNECTED.";
+    }
 
     // Track the client_id from the handshake for this connection lifetime.
     QString connectionClientId;
@@ -724,7 +757,7 @@ void NamedPipeInterceptor::serviceClient(HANDLE pipe)
         // ── Dispatch by opcode ────────────────────────────────────────────────
         switch (opcode) {
         case 0: { // Handshake → reply READY
-            qDebug() << "[NamedPipeInterceptor] HANDSHAKE:" << payloadStr;
+            if (!selfProbe) qDebug() << "[NamedPipeInterceptor] HANDSHAKE:" << payloadStr;
 
             // Extract client_id for optional RuneLite gating.
             QJsonParseError parseErr;
@@ -740,7 +773,7 @@ void NamedPipeInterceptor::serviceClient(HANDLE pipe)
                            << GetLastError();
                 goto disconnect; // break out of switch AND frame loop
             }
-            qDebug() << "[NamedPipeInterceptor] READY sent.";
+            if (!selfProbe) qDebug() << "[NamedPipeInterceptor] READY sent.";
             break;
         }
 
@@ -810,7 +843,7 @@ void NamedPipeInterceptor::serviceClient(HANDLE pipe)
     } // frame loop
 
 disconnect:
-    qDebug() << "[NamedPipeInterceptor] CLIENT DISCONNECTED.";
+    if (!selfProbe) qDebug() << "[NamedPipeInterceptor] CLIENT DISCONNECTED.";
     // Close our handle and de-register under the lock so stop() never CancelIoEx's
     // a handle we've already closed (both touch m_clientPipes under m_clientsMutex).
     {
