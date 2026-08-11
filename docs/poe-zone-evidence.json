@@ -1,0 +1,120 @@
+{
+  "resolved": {
+    "Abomination": {
+      "category": "map",
+      "evidence": "Tier: 16 ... Slot: Nightmare Map ... Tags: dungeon ,temple ,map ,cannot_be_twinned ,einharmaps ,DivinationCardsCitadel-style entry; Id: MapWorldsAbomination, Act: 11, Area Level: 84",
+      "source": "https://poedb.tw/us/Abomination"
+    },
+    "Altered Distant Memory": {
+      "category": "memory",
+      "evidence": "Bonus: Complete this map ... Slot: Altered Distant Memory ... 'Map (Tier 1)' with Synthesis league flavour text about a memory of youth",
+      "source": "https://poedb.tw/us/Altered_Distant_Memory"
+    },
+    "Augmented Distant Memory": {
+      "category": "memory",
+      "evidence": "Acronym: Experience, Modifiers, Synthesis | Release Version: Blight | BaseType: Map (Tier 1) — a Synthesis 'Distant Memory' unique map",
+      "source": "https://poedb.tw/us/Augmented_Distant_Memory"
+    },
+    "Battleground Graves": {
+      "category": "other",
+      "evidence": "Id: ExpeditionBattlegroundGraves, Act: 2, Area Level: 1 — listed under an 'Expedition' terrain table (Terrian: Spectral Hollow, Forgotten Grotto, Alluring Pool, Chittering Chamber) with Expedition-specific monster mods (Runic Monsters, Excavated Chests, Artifacts)",
+      "source": "https://poedb.tw/us/Battleground_Graves"
+    },
+    "Chateau": {
+      "category": "map",
+      "evidence": "Tier: 1 ... Boss Fights: Hephaeus, The Hammer ... Tags: *urban* ,*dungeon* ,*temple* ,*map* ,*area_with_water* ,*indoors_area* ,*einharmaps* ,*wealthy_area* ,*scavenger_boss_area* ,*labyrinth_tileset_area* ,*city_home_map*",
+      "source": "https://poedb.tw/us/Chateau"
+    },
+    "Citadel": {
+      "category": "map",
+      "evidence": "Tier: 16 ... Slot: Nightmare Map ... Boss: Nightmare of Uhtred ... Tags: *dungeon* ,*temple* ,*map* ,*cannot_be_twinned* ,*einharmaps* ,*DivinationCardsCitadel*",
+      "source": "https://poedb.tw/us/Citadel"
+    },
+    "Excavation": {
+      "category": "map",
+      "evidence": "Tier: 7 ... Boss Fights: Shrieker Eihal, Breaker Toruul ... Tags: *cave* ,*mountain* ,*indoors_area* ,*map* ,*einharmaps* ,*mine_area* ,*cave_area*",
+      "source": "https://poedb.tw/us/Excavation"
+    },
+    "Eye of the Storm": {
+      "category": "boss",
+      "evidence": "Boss Fights: Sirus, Awakener of Worlds, Sirus, Awakener of Worlds | Recipe: Awakening Fragment, Awakening Fragment, Awakening Fragment, Awakening Fragment (85) — the dedicated Sirus boss arena entered via Awakening fragments, not a standard Atlas map (no Tier: value on the page)",
+      "source": "https://poedb.tw/us/Eye_of_the_Storm"
+    },
+    "Grave Trough": {
+      "category": "map",
+      "evidence": "Act: 11 | Level: 78 | Boss: The Restless Shade | Elder Map Boss: The Restless Shade | Tags: *temple* ,*swamp* ,*map* ,*area_with_water* ,*einharmaps* ,*map_drops_can_upgrade_to_nightmare_boss* ,*can_be_infected_map*",
+      "source": "https://poedb.tw/us/Grave_Trough"
+    },
+    "Haunted Mansion": {
+      "category": "map",
+      "evidence": "Tier: 7 ... Id: MapWorldsHauntedMansion, Act: 11, Area Level: 72 ... Tags: *urban* ,*indoors_area* ,*map* ,*einharmaps* ,*map_drops_can_upgrade_to_nightmare_boss* ,*can_be_infected_map*",
+      "source": "https://poedb.tw/us/Haunted_Mansion"
+    },
+    "Hive Colony": {
+      "category": "boss",
+      "evidence": "Id: ChayulaLeagueTowerBoss, Act: 11, Area Level: 83, Boss Fights: It That Was Tul, It That Was Esh; Mods: Players do not gain Experience / do not lose Experience on Death; Atlas Linked: Infested Valley Map — a Breach-lord boss arena (Esh & Tul combined form when Elder-influenced) reached from within a map, not itself a Tiered Atlas map",
+      "source": "https://poedb.tw/us/Hive_Colony"
+    },
+    "Ivory Temple": {
+      "category": "map",
+      "evidence": "Tier: 13 ... Boss Fights: Sanctum Enforcer, Sanctum Guardian ... Tags: *temple* ,*forestdark* ,*indoors_area* ,*map* ,*einharmaps* ,*wealthy_area* ,*church*",
+      "source": "https://poedb.tw/us/Ivory_Temple"
+    },
+    "Maelström of Chaos": {
+      "category": "map",
+      "evidence": "Bonus: Complete this map | Boss Fights: Merveil, the Reflection, Merveil, the Returned | Slot: Maelström of Chaos | 'Maelström of Chaos ... Map (Tier 1)'",
+      "source": "https://poedb.tw/us/Maelstr%C3%B6m_of_Chaos"
+    },
+    "Mausoleum": {
+      "category": "map",
+      "evidence": "Tier: 13 ... Boss Fights: Tolman, the Exhumer ... Tags: *dungeon* ,*temple* ,*urban* ,*indoors_area* ,*map* ,*no_echo* ,*delve_chest* ,*einharmaps* ,*map_drops_can_upgrade_to_nightmare_boss* ,*can_be_infected_map*",
+      "source": "https://poedb.tw/us/Mausoleum"
+    },
+    "Monastery of the Keepers": {
+      "category": "other",
+      "evidence": "poedb: Id: ChayulaLeague, Act: 1, Level: 1, Mods: Minimap is Revealed (a small fixed hub area, not a Tiered map). Path of Exile (X/Twitter): \"Ailith and the Monastery of the Keepers is here to stay, replacing the old Breach mechanic. At endgame, this mechanic has full Atlas tree and Scarab support.\" — it is the Keepers of the Flame league-mechanic hub, not an Atlas map, campaign zone, or hideout",
+      "source": "https://poedb.tw/us/Monastery_of_the_Keepers ; https://x.com/pathofexile/status/2027105365272445104"
+    },
+    "Oriath Delusion": {
+      "category": "simulacrum",
+      "evidence": "\"Oriath Delusion is one of the possible arena of Simulacrum... encounter. It is a modified version of Oriath Docks (Act 10).\" Id: AfflictionTown10, Tags: map, no_leaguestone, map_not_on_atlas, no_prophecies",
+      "source": "https://web.archive.org/web/2024/https://pathofexile.fandom.com/wiki/Oriath_Delusion"
+    },
+    "Rewritten Distant Memory": {
+      "category": "memory",
+      "evidence": "Bonus: Complete this map ... Boss Fights: Rewritten Synthete ... Slot: Rewritten Distant Memory ... 'Rewritten Distant Memory ... Map (Tier 1)'",
+      "source": "https://poedb.tw/us/Rewritten_Distant_Memory"
+    },
+    "Seething Chyme": {
+      "category": "boss",
+      "evidence": "Boss Fights: The Infinite Hunger | Recipe: Writhing Invitation (79) / (83) | Id: MapWorldsPrimordialBoss1, Act: 11, Area Level: 83 — a dedicated Vaal/Cortex-linked boss arena entered via Writhing Invitation, no Tier value present",
+      "source": "https://poedb.tw/us/Seething_Chyme"
+    },
+    "Summit": {
+      "category": "map",
+      "evidence": "Tier: 3 ... Id: MapWorldsSummit, Act: 11, Area Level: 79 ... Tags: *urban* ,*map* ,*cannot_be_twinned* ,*einharmaps* ,*map_drops_can_upgrade_to_nightmare_boss* ,*can_be_infected_map*",
+      "source": "https://poedb.tw/us/Summit"
+    },
+    "Temple": {
+      "category": "map",
+      "evidence": "Tier: 12 ... Boss Fights: Jorus, Sky's Edge ... Tags: *temple* ,*urban* ,*indoors_area* ,*map* ,*area_with_water* ,*delve_chest* ,*einharmaps* ,*solaris_area* ,*wealthy_area* ,*church*",
+      "source": "https://poedb.tw/us/Temple"
+    },
+    "Twisted Distant Memory": {
+      "category": "memory",
+      "evidence": "Bonus: Complete this map ... Boss Fights: Twisted Synthete ... Slot: Twisted Distant Memory ... 'Twisted Distant Memory ... Map (Tier 1)'",
+      "source": "https://poedb.tw/us/Twisted_Distant_Memory"
+    },
+    "Vaal Pyramid": {
+      "category": "map",
+      "evidence": "Tier: 15 ... Boss Fights: The Broken Prince, The Fallen Queen, The Hollow Lady ... Id: MapAtlasVaalPyramid, Act: 11, Area Level: 70",
+      "source": "https://poedb.tw/us/Vaal_Pyramid"
+    },
+    "Ziggurat": {
+      "category": "map",
+      "evidence": "Tier: 16 ... Slot: Nightmare Map ... Boss Fights: Nightmare of Catarina ... Tags: *dungeon* ,*temple* ,*urban* ,*indoors_area* ,*map* ,*no_echo* ,*delve_chest* ,*einharmaps* ,*cannot_be_twinned* ,*DivinationCardsZiggurat*",
+      "source": "https://poedb.tw/us/Ziggurat"
+    }
+  },
+  "unresolved": []
+}

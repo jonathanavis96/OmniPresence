@@ -287,11 +287,22 @@ void DiscordPresenceClient::publishActivity(const PresencePayload& p, bool withA
              << "| type=" << static_cast<int>(p.activityType)
              << "| assets=" << withAssets;
 
+    // Discord enforces 2..128 characters on name/details/state and rejects the
+    // WHOLE presence otherwise ("String length is out of range. Must be between
+    // 2 and 128"). A single-character details (e.g. a one-letter window title)
+    // is enough to blank the presence, so clamp here rather than trusting every
+    // upstream rule/template to produce a legal length.
+    const auto fitField = [](const QString& s) -> QString {
+        if (s.size() > 128) return s.left(127) + QStringLiteral("…");
+        if (s.size() == 1)  return s + QStringLiteral(" ");   // pad to the minimum
+        return s;
+    };
+
     discordpp::Activity activity;
     activity.SetType(toSdkActivityType(p.activityType));
-    activity.SetName(p.name.toStdString());
-    if (!p.details.isEmpty()) activity.SetDetails(p.details.toStdString());
-    if (!p.state.isEmpty())   activity.SetState(p.state.toStdString());
+    activity.SetName(fitField(p.name).toStdString());
+    if (!p.details.isEmpty()) activity.SetDetails(fitField(p.details).toStdString());
+    if (!p.state.isEmpty())   activity.SetState(fitField(p.state).toStdString());
 
     // Choose what shows in the compact member-list / sidebar status. Rule-based
     // presences opt into "Details" (e.g. "Training Slayer"); the generic app
@@ -339,17 +350,30 @@ void DiscordPresenceClient::publishActivity(const PresencePayload& p, bool withA
 
             const QString err = QString::fromStdString(result.ToString());
 
-            // A missing/unuploaded art asset (ErrorType 6 "Unable to resolve …
-            // image asset") makes Discord reject the ENTIRE presence. Retry once
-            // without the images so the text presence still publishes. The fix is
-            // to upload the key under Portal → Rich Presence → Art Assets.
+            // A missing/unresolvable art asset makes Discord reject the ENTIRE
+            // presence, so retry once without images to keep the text presence.
+            //
+            // Match on image-specific wording ONLY. ErrorType 6 is Discord's
+            // GENERIC field-validation code — it also covers e.g. 'Field
+            // "details": String length is out of range'. Treating every
+            // ErrorType 6 as an art failure stripped the images from presences
+            // that had nothing wrong with their art, then failed again on the
+            // real cause while logging a misleading "upload the key" hint.
             const bool assetError = err.contains(QStringLiteral("image asset"),
                                                  Qt::CaseInsensitive) ||
-                                    err.contains(QStringLiteral("ErrorType: 6"));
+                                    err.contains(QStringLiteral("asset"),
+                                                 Qt::CaseInsensitive);
             if (hadAssets && assetError) {
-                qWarning() << "[DiscordPresenceClient] Art asset unresolved ("
-                           << err << ") — retrying without images. Upload the key "
-                              "in Portal → Rich Presence → Art Assets to show art.";
+                qWarning() << "[DiscordPresenceClient] Art asset unresolved — large="
+                           << (p.largeImageKey.isEmpty() ? QStringLiteral("(none)")
+                                                         : p.largeImageKey)
+                           << "small="
+                           << (p.smallImageKey.isEmpty() ? QStringLiteral("(none)")
+                                                         : p.smallImageKey)
+                           << "err=" << err
+                           << "— retrying without images. External art must be a "
+                              "public URL to a square PNG of at least 512x512; "
+                              "portal keys must exist under Rich Presence → Art Assets.";
                 publishActivity(p, /*withAssets=*/false);
                 return;
             }

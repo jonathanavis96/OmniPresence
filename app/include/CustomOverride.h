@@ -52,7 +52,7 @@ struct CustomOverrideConfig {
     bool                    enabled{false};        ///< Master toggle (independent of pause).
     CustomMode              mode{CustomMode::Single};
     int                     activeIndex{0};        ///< Single-mode selection.
-    int                     intervalSeconds{4};    ///< Cycle-mode step (min 1).
+    double                  intervalSeconds{4.0};  ///< Cycle-mode step in seconds (min 0.5).
     QList<CustomPreset>     presets;
     QList<CustomImageAsset> imageLibrary;
 

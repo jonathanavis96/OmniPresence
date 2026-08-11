@@ -16,6 +16,8 @@
 #include <QObject>
 #include <QString>
 #include <QDateTime>
+#include <QMap>
+#include <QList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QStringList>
@@ -72,7 +74,7 @@ class AppController : public QObject {
     Q_PROPERTY(bool    customEnabled         READ customEnabled         WRITE setCustomEnabled         NOTIFY customChanged)
     Q_PROPERTY(QString customMode            READ customMode            WRITE setCustomMode            NOTIFY customChanged)
     Q_PROPERTY(int     customActiveIndex     READ customActiveIndex     WRITE setCustomActiveIndex     NOTIFY customChanged)
-    Q_PROPERTY(int     customIntervalSeconds READ customIntervalSeconds WRITE setCustomIntervalSeconds NOTIFY customChanged)
+    Q_PROPERTY(double  customIntervalSeconds READ customIntervalSeconds WRITE setCustomIntervalSeconds NOTIFY customChanged)
 
 public:
     explicit AppController(QObject* parent = nullptr);
@@ -112,7 +114,7 @@ public:
     bool     customEnabled()         const noexcept;
     QString  customMode()            const;   ///< "single" | "cycle"
     int      customActiveIndex()     const noexcept;
-    int      customIntervalSeconds() const noexcept;
+    double   customIntervalSeconds() const noexcept;
 
     // ── QML-invokable actions ─────────────────────────────────────────────────
     Q_INVOKABLE void captureCurrentWindow();
@@ -142,7 +144,7 @@ public:
     Q_INVOKABLE void setCustomEnabled(bool enabled);
     Q_INVOKABLE void setCustomMode(const QString& mode);              ///< "single" | "cycle"
     Q_INVOKABLE void setCustomActiveIndex(int index);                ///< Single-mode selection.
-    Q_INVOKABLE void setCustomIntervalSeconds(int seconds);          ///< Cycle step (clamped >=1).
+    Q_INVOKABLE void setCustomIntervalSeconds(double seconds);       ///< Cycle step (clamped >=0.5).
     /// [{index,label,name,includeInCycle}] in list (= cycle) order.
     Q_INVOKABLE QVariantList customPresetsList() const;
     /// All editable fields of one preset (empty map if index out of range).
@@ -240,6 +242,34 @@ private slots:
 
 private:
     void evaluateAndPublish();
+
+    /// Rewrite an arbitrary user image as a 1024x1024 transparent-padded PNG in
+    /// the temp dir and return its path ("" if the source isn't a readable
+    /// image). Discord rejects Rich Presence art below 512x512 or non-square,
+    /// so the raw dragged file must never be uploaded as-is.
+    [[nodiscard]] QString normalizeForUpload(const QString& srcPath) const;
+
+    /// One anonymous image host in the upload fallback chain.
+    struct UploadHost {
+        QString name;              ///< For log lines only.
+        QString endpoint;          ///< Multipart POST target.
+        QString filePartName;      ///< Form field the file goes in.
+        QMap<QString, QString> extraFields;  ///< Any additional form fields.
+        QString jsonUrlField;      ///< JSON key holding the URL; empty = body IS the URL.
+    };
+    /// Hosts in preference order. See the definition for why a chain is needed.
+    static const QList<UploadHost>& uploadHosts();
+
+    /// POST the normalized PNG to uploadHosts()[hostIndex], falling through to the
+    /// next host on failure. Deletes `normalized` once the chain ends either way.
+    void uploadToHost(int hostIndex, const QString& normalized, const QString& targetId,
+                      const QString& fileName, const QString& baseName);
+
+    /// Fetch `url` to confirm it really serves an image before writing it to the
+    /// preset; falls through to the next host if it doesn't.
+    void verifyAndAdopt(int hostIndex, const QString& url, const QString& normalized,
+                        const QString& targetId, const QString& fileName,
+                        const QString& baseName);
 
     /// Recompute m_overrideState.customOverride from the current custom config +
     /// cycle frame index (nullopt when the override is off or resolves to

@@ -37,6 +37,20 @@ public:
     bool importImage(const QString& srcPath, const QString& key,
                      QString* outPath, QString* err) const;
 
+    /// Rewrite srcPath as a 1024x1024 transparent-padded PNG at outPath.
+    ///
+    /// Discord rejects Rich Presence art that is not square and at least
+    /// 512x512 — such an image resolves to a white box with a question mark
+    /// rather than failing loudly. Anything published as external art must go
+    /// through here first.
+    ///
+    /// Unlike importImage()'s cover+centre-crop, this "contains" the source:
+    /// the longest edge is scaled to 1024 and the result centred on a
+    /// transparent canvas, so a non-square logo keeps its edges.
+    /// Returns false (and sets *err) on failure.
+    static bool normalizeSquarePng(const QString& srcPath, const QString& outPath,
+                                   QString* err);
+
 private:
     QString m_dir;
 };

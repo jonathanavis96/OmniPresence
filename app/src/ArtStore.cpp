@@ -59,6 +59,40 @@ bool ArtStore::importImage(const QString& srcPath, const QString& key,
     return true;
 }
 
+bool ArtStore::normalizeSquarePng(const QString& srcPath, const QString& outPath,
+                                  QString* err) {
+    QImage img(srcPath);
+    if (img.isNull()) {
+        if (err) *err = QStringLiteral("Unreadable image: %1").arg(srcPath);
+        return false;
+    }
+
+    constexpr int S = 1024;
+    // "Contain": longest edge to S, centred on a transparent canvas. Padding
+    // rather than cropping keeps the whole logo — a 650x665 icon would lose its
+    // edges to a centre-crop.
+    const QImage fitted = img.scaled(S, S, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+    QImage canvas(S, S, QImage::Format_ARGB32);
+    canvas.fill(Qt::transparent);
+    {
+        QPainter p(&canvas);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.drawImage((S - fitted.width()) / 2, (S - fitted.height()) / 2, fitted);
+    }
+
+    const QFileInfo fi(outPath);
+    if (!fi.absolutePath().isEmpty() && !QDir().mkpath(fi.absolutePath())) {
+        if (err) *err = QStringLiteral("Cannot create dir: %1").arg(fi.absolutePath());
+        return false;
+    }
+    if (!canvas.save(outPath, "PNG")) {
+        if (err) *err = QStringLiteral("Cannot write %1").arg(outPath);
+        return false;
+    }
+    return true;
+}
+
 bool ArtStore::renderMonogram(const QString& outPath, const QString& monogram,
                               const QColor& accent, const QString& label,
                               QString* err) {
