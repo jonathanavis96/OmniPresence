@@ -1,0 +1,16 @@
+2026/08/11 18:50:59 1 aaa1111 [INFO Client 7272] ***** LOG FILE OPENING *****
+2026/08/11 18:50:59 2 aaa1112 [INFO Client 7272] : You have entered Lioneye's Watch.
+2026/08/11 18:51:02 3 aaa1113 [INFO Client 7272] [WINDOW] Gained focus
+2026/08/11 18:51:10 4 aaa1114 [INFO Client 7272] @From <SomeGuild> Wanderer1: gl hf
+2026/08/11 18:51:12 5 aaa1115 [INFO Client 7272] @To Wanderer1: gl
+2026/08/11 18:51:20 6 aaa1116 [INFO Client 7272] : Wanderer1 (Witch) is now level 12
+2026/08/11 18:51:25 7 aaa1117 [INFO Client 7272] : TestCharacter (Occultist) is now level 92
+2026/08/11 18:52:00 8 aaa1118 [INFO Client 7272] Connecting to instance server at 10.0.0.1:6112
+2026/08/11 18:52:03 9 aaa1119 [INFO Client 7272] : You have entered Dunes.
+2026/08/11 18:52:04 10 aaa111a [INFO Client 7272] [LOADING SCREEN] (Dunes) Duration = 1.203 seconds
+2026/08/11 18:53:00 11 aaa111b [INFO Client 7272] : Wanderer1 has been slain.
+2026/08/11 18:53:05 12 aaa111c [INFO Client 7272] : TestCharacter has been slain.
+2026/08/11 18:53:30 13 aaa111d [INFO Client 7272] : AFK mode is now ON.
+2026/08/11 18:54:00 14 aaa111e [INFO Client 7272] : AFK mode is now OFF.
+2026/08/11 18:54:10 15 aaa111f [INFO Client 7272] [WINDOW] Lost focus
+2026/08/11 18:55:00 16 aaa1120 [INFO Client 7272] : You have entered Cartographer's Hideout.

@@ -10,6 +10,7 @@
 #include "CustomOverride.h"   // CustomOverrideConfig
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QMap>
 
 namespace OmniPresence {
@@ -23,6 +24,16 @@ struct AppSettings {
     int     pollIntervalMs{750};
     int     stabilityWindowMs{2500};
     bool    showInTray{true};
+};
+
+/// Path of Exile integration settings — see the "poe" config object.
+/// The design explicitly rejects any auto-detected "most frequent name"
+/// heuristic for identifying the local player: with no configured character,
+/// character/class/level/deaths are simply omitted from presence rather than
+/// guessed.
+struct PoeConfig {
+    QStringList characters;   ///< Character name(s) whose log lines update presence.
+    QString     logPathOverride;   ///< Optional explicit Client.txt/LatestClient.txt path or dir.
 };
 
 class ConfigStore : public QObject {
@@ -49,6 +60,10 @@ public:
     /// object in config JSON, defaulting any missing field (see ConfigStore.cpp).
     [[nodiscard]] const CustomOverrideConfig& customConfig() const noexcept { return m_customConfig; }
     [[nodiscard]] CustomOverrideConfig&       customConfig()       noexcept { return m_customConfig; }
+
+    /// Path of Exile config — parsed from the "poe" object in config JSON.
+    [[nodiscard]] const PoeConfig& poeConfig() const noexcept { return m_poeConfig; }
+    [[nodiscard]] PoeConfig&       poeConfig()       noexcept { return m_poeConfig; }
 
     /// Art-asset metadata: image key -> hover text. The local PNG path is
     /// derived from ArtStore::localPathForKey(key), not stored here.
@@ -77,6 +92,7 @@ private:
     AppSettings m_settings;
     IdleConfig  m_idleConfig;
     CustomOverrideConfig   m_customConfig;
+    PoeConfig               m_poeConfig;
     QMap<QString, QString> m_assetKeys;
     QString     m_configPath;
 };

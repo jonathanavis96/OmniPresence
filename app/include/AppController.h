@@ -35,6 +35,9 @@ class LocalContextServer;
 class NamedPipeInterceptor;
 class InputIdleMonitor;
 class ConfigStore;
+class PoeLogWatcher;
+class PoeActivityInferencer;
+class PoeZoneTable;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -231,6 +234,15 @@ private slots:
     /// window — its Discord-IPC source only sends on change, so a steady session
     /// would otherwise let the payload go stale and publish a blank name.
     void onRuneliteKeepAliveTick();
+    /// One complete Path of Exile log line, from PoeLogWatcher. Feeds
+    /// PoeActivityInferencer and writes the resulting context into
+    /// IntegrationContext under source "poe".
+    void onPoeLogLine(const QString& line);
+    /// Keep the PoE integration feed fresh while Path of Exile is the focused
+    /// window — like RuneLite, presence can go many minutes between log lines
+    /// (a whole map), so without this the payload would decay to stale and
+    /// publish a blank name mid-map.
+    void onPoeKeepAliveTick();
     /// ~5 s tick driving time-based idle-tier (AFK/Away) transitions — without
     /// this, idle crossing a threshold would never re-publish since nothing
     /// else triggers evaluateAndPublish() while the window/integration state
@@ -311,6 +323,9 @@ private:
     std::unique_ptr<NamedPipeInterceptor>   m_runeliteInterceptor;
     std::unique_ptr<InputIdleMonitor>       m_inputIdle;
     std::unique_ptr<ConfigStore>            m_configStore;
+    std::unique_ptr<PoeLogWatcher>          m_poeWatcher;
+    std::unique_ptr<PoeActivityInferencer>  m_poeInferencer;
+    std::unique_ptr<PoeZoneTable>           m_poeZoneTable;
 
     IntegrationContext   m_integrationContext;
     RuleEngine           m_ruleEngine;
@@ -325,6 +340,7 @@ private:
     class QTimer*   m_discordCallbackTimer{nullptr};
     class QTimer*   m_captureTimer{nullptr};
     class QTimer*   m_runeliteKeepAliveTimer{nullptr};
+    class QTimer*   m_poeKeepAliveTimer{nullptr};
     class QTimer*   m_idleTickTimer{nullptr};
     class QTimer*   m_customFrameTimer{nullptr};
     int             m_customFrameIndex{0};   ///< Position within cycleIndices().

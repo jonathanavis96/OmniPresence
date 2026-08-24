@@ -67,6 +67,33 @@ TemplateContext TemplateEngine::buildContext(const WindowInfo& window,
     ctx[QStringLiteral("runelite.location")]   = integrations.runeliteLocation();
     ctx[QStringLiteral("runelite.confidence")] = integrations.runeliteConfidence();
 
+    // Path of Exile
+    ctx[QStringLiteral("poe.zone")]           = integrations.poeZone();
+    ctx[QStringLiteral("poe.zoneCategory")]   = integrations.poeZoneCategory();
+    ctx[QStringLiteral("poe.activity")]       = integrations.poeActivity();
+    ctx[QStringLiteral("poe.character")]      = integrations.poeCharacter();
+    ctx[QStringLiteral("poe.characterClass")] = integrations.poeCharacterClass();
+    ctx[QStringLiteral("poe.level")]          = integrations.poeLevel();
+    ctx[QStringLiteral("poe.deaths")]         = integrations.poeDeaths();
+    ctx[QStringLiteral("poe.afk")]            = integrations.poeAfk();
+    ctx[QStringLiteral("poe.focused")]        = integrations.poeFocused();
+    // poe.state — "<zone> — Level <N> <Class>" once a configured character has
+    // levelled up this session, else just the bare zone. Character identity is
+    // omitted unless the user opted in (see design doc), so this must degrade
+    // to zone-only rather than leaving a dangling "— Level  " fragment.
+    {
+        const QString zone  = integrations.poeZone();
+        const QString klass = integrations.poeCharacterClass();
+        const QString level = integrations.poeLevel();
+        QString state = zone;
+        if (!klass.isEmpty() && !level.isEmpty()) {
+            state = zone.isEmpty()
+                ? QStringLiteral("Level %1 %2").arg(level, klass)
+                : QStringLiteral("%1 — Level %2 %3").arg(zone, level, klass);
+        }
+        ctx[QStringLiteral("poe.state")] = state;
+    }
+
     return ctx;
 }
 

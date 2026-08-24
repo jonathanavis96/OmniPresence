@@ -71,6 +71,37 @@ target_link_libraries(test_config_assets PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME test_config_assets COMMAND test_config_assets)
 omni_make_test_selfcontained(test_config_assets)
 
+add_executable(test_poe_zones
+    test_poe_zones.cpp
+    ${OMNI_TEST_SRC}/PoeZoneTable.cpp
+)
+target_include_directories(test_poe_zones PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
+target_link_libraries(test_poe_zones PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+target_compile_definitions(test_poe_zones PRIVATE OMNI_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_test(NAME test_poe_zones COMMAND test_poe_zones)
+omni_make_test_selfcontained(test_poe_zones)
+
+add_executable(test_poe_inferencer
+    test_poe_inferencer.cpp
+    ${OMNI_TEST_SRC}/PoeActivityInferencer.cpp
+    ${OMNI_TEST_SRC}/PoeZoneTable.cpp
+)
+target_include_directories(test_poe_inferencer PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
+target_link_libraries(test_poe_inferencer PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+target_compile_definitions(test_poe_inferencer PRIVATE OMNI_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_test(NAME test_poe_inferencer COMMAND test_poe_inferencer)
+omni_make_test_selfcontained(test_poe_inferencer)
+
+add_executable(test_poe_log_watcher
+    test_poe_log_watcher.cpp
+    ${OMNI_TEST_SRC}/PoeLogWatcher.cpp
+    ${CMAKE_SOURCE_DIR}/app/include/PoeLogWatcher.h   # AUTOMOC scans the Q_OBJECT header
+)
+target_include_directories(test_poe_log_watcher PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
+target_link_libraries(test_poe_log_watcher PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME test_poe_log_watcher COMMAND test_poe_log_watcher)
+omni_make_test_selfcontained(test_poe_log_watcher)
+
 add_executable(test_rule_engine_render
     test_rule_engine_render.cpp
     ${OMNI_TEST_SRC}/RuleEngine.cpp

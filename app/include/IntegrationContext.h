@@ -66,6 +66,15 @@ public:
     [[nodiscard]] QString runeliteSkill()       const;
     [[nodiscard]] QString runeliteLocation()    const;
     [[nodiscard]] QString runeliteConfidence()  const;
+    [[nodiscard]] QString poeZone()             const;
+    [[nodiscard]] QString poeZoneCategory()     const;
+    [[nodiscard]] QString poeActivity()         const;
+    [[nodiscard]] QString poeCharacter()        const;
+    [[nodiscard]] QString poeCharacterClass()   const;
+    [[nodiscard]] QString poeLevel()            const;
+    [[nodiscard]] QString poeDeaths()           const;
+    [[nodiscard]] QString poeAfk()              const;
+    [[nodiscard]] QString poeFocused()          const;
 
 private:
     QMap<QString, IntegrationPayload> m_payloads;

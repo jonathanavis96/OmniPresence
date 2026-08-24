@@ -15,6 +15,10 @@
 #include "NamedPipeInterceptor.h"
 #include "InputIdleMonitor.h"
 #include "ConfigStore.h"
+#include "PoeLogWatcher.h"
+#include "PoeActivityInferencer.h"
+#include "PoeZoneTable.h"
+#include <QCoreApplication>
 #include "TemplateEngine.h"
 #include <QTimer>
 #include <QDebug>
@@ -106,6 +110,9 @@ AppController::AppController(QObject* parent)
                                                            this))
     , m_runeliteInterceptor(std::make_unique<NamedPipeInterceptor>(this))
     , m_inputIdle(std::make_unique<InputIdleMonitor>(this))
+    , m_poeWatcher(std::make_unique<PoeLogWatcher>(this))
+    , m_poeInferencer(std::make_unique<PoeActivityInferencer>())
+    , m_poeZoneTable(std::make_unique<PoeZoneTable>())
 {
     m_watcher = createActiveWindowWatcher(this);
 
@@ -118,6 +125,9 @@ AppController::AppController(QObject* parent)
 
     connect(m_runeliteInterceptor.get(), &NamedPipeInterceptor::activityCaptured,
             this,                        &AppController::onRuneliteActivityCaptured);
+
+    connect(m_poeWatcher.get(), &PoeLogWatcher::lineRead,
+            this,               &AppController::onPoeLogLine);
 
     connect(m_discordClient.get(), &DiscordPresenceClient::connectionStatusChanged,
             this, [this](DiscordConnectionStatus status) {
@@ -189,6 +199,15 @@ AppController::AppController(QObject* parent)
     connect(m_runeliteKeepAliveTimer, &QTimer::timeout,
             this, &AppController::onRuneliteKeepAliveTick);
 
+    // ── PoE keep-alive (30 s) ──────────────────────────────────────────────────
+    // Same rationale as the RuneLite keep-alive above: the log can go many
+    // minutes between lines (a whole map), so re-stamp freshness while PoE is
+    // focused rather than letting the last reading decay to stale.
+    m_poeKeepAliveTimer = new QTimer(this);
+    m_poeKeepAliveTimer->setInterval(30000);
+    connect(m_poeKeepAliveTimer, &QTimer::timeout,
+            this, &AppController::onPoeKeepAliveTick);
+
     // ── Idle-tier tick (5 s) ───────────────────────────────────────────────────
     // Drives time-based AFK/Away transitions without waiting for a window or
     // integration event (see onIdleTick / RuleEngine's idle-tier override).
@@ -225,6 +244,20 @@ void AppController::initialise() {
     m_runeliteKeepAliveTimer->start();
     m_idleTickTimer->start();
     reconfigureCustomTimer();   // resume a saved enabled/cycle override on launch
+
+    // ── Path of Exile ────────────────────────────────────────────────────────
+    // Zone table: next to the exe in a Windows release build (copied there by
+    // a post-build step), else the repo-relative dev path — mirrors
+    // ConfigStore::resolveConfigPath()'s dev/release split.
+    const QString exeSideTable = QDir(qApp->applicationDirPath()).filePath(QStringLiteral("config/poe-zones.json"));
+    if (!m_poeZoneTable->loadFromFile(exeSideTable)) {
+        m_poeZoneTable->loadFromFile(QStringLiteral("config/poe-zones.json"));
+    }
+    m_poeInferencer->setZoneTable(m_poeZoneTable.get());
+    m_poeInferencer->setConfiguredCharacters(m_configStore->poeConfig().characters);
+    m_poeWatcher->setConfiguredPath(m_configStore->poeConfig().logPathOverride);
+    m_poeWatcher->start();
+    m_poeKeepAliveTimer->start();
 }
 
 // ── Property getters ──────────────────────────────────────────────────────────
@@ -336,6 +369,42 @@ void AppController::onRuneliteKeepAliveTick() {
     if (!runeliteFocused) return;
 
     if (m_integrationContext.refresh(QStringLiteral("runelite"))) {
+        evaluateAndPublish();
+    }
+}
+
+void AppController::onPoeLogLine(const QString& line) {
+    m_poeInferencer->processLine(line);
+    const PoeContext& ctx = m_poeInferencer->context();
+    if (!ctx.sessionActive) return;   // nothing parsed yet (e.g. only chat so far)
+
+    QJsonObject o;
+    o[QStringLiteral("zone")]         = ctx.zone;
+    o[QStringLiteral("zoneCategory")] = ctx.zoneCategory;
+    o[QStringLiteral("activity")]     = ctx.activity;
+    // Character identity is omitted unless a configured character has
+    // actually levelled up this session (design: never guess from the most
+    // frequent name) — an empty character field must not surface a "Level 0"
+    // fragment via {{poe.level}}, so level/class are only written once known.
+    if (!ctx.character.isEmpty()) {
+        o[QStringLiteral("character")]      = ctx.character;
+        o[QStringLiteral("characterClass")] = ctx.characterClass;
+        o[QStringLiteral("level")]          = ctx.level;
+    }
+    o[QStringLiteral("deaths")]   = ctx.deaths;
+    o[QStringLiteral("afk")]      = ctx.afk;
+    o[QStringLiteral("focused")]  = ctx.focused;
+    m_integrationContext.update(QStringLiteral("poe"), o);
+    evaluateAndPublish();
+}
+
+void AppController::onPoeKeepAliveTick() {
+    // Mirrors onRuneliteKeepAliveTick(): re-stamp freshness while PoE is
+    // focused so a quiet map doesn't let the payload go stale mid-session.
+    const QString pn = m_currentWindow.processName.toLower();
+    if (!pn.contains(QLatin1String("pathofexile"))) return;
+
+    if (m_integrationContext.refresh(QStringLiteral("poe"))) {
         evaluateAndPublish();
     }
 }

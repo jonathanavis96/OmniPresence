@@ -10,6 +10,10 @@
 //   ({{runelite.activity}} is routed through omni::skillLabel() — see
 //   SkillLabel.h — so a recognised OSRS skill renders as "Training {Skill}";
 //   non-skill activity passes through verbatim.)
+//   {{poe.zone}}  {{poe.zoneCategory}}  {{poe.activity}}  {{poe.character}}
+//   {{poe.characterClass}}  {{poe.level}}  {{poe.deaths}}  {{poe.afk}}  {{poe.focused}}
+//   {{poe.state}} — derived: "<zone> — Level <N> <Class>" once a configured
+//   character has levelled up this session, else just the bare zone.
 //
 // Fallback syntax:
 //   {{terminal.repo or vscode.workspace}}  — first non-empty value wins.
