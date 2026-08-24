@@ -9,6 +9,7 @@ QString IntegrationPayload::field(const QString& key) const {
     const QJsonValue v = data[key];
     if (v.isString()) return v.toString();
     if (v.isDouble()) return QString::number(v.toDouble());
+    if (v.isBool())   return v.toBool() ? QStringLiteral("true") : QStringLiteral("false");
     return {};
 }
 
@@ -73,6 +74,15 @@ QString IntegrationContext::runeliteTarget()         const { return FRESH_FIELD(
 QString IntegrationContext::runeliteSkill()          const { return FRESH_FIELD("runelite", "skill");           }
 QString IntegrationContext::runeliteLocation()       const { return FRESH_FIELD("runelite", "location");        }
 QString IntegrationContext::runeliteConfidence()     const { return FRESH_FIELD("runelite", "confidence");      }
+QString IntegrationContext::poeZone()                const { return FRESH_FIELD("poe", "zone");                 }
+QString IntegrationContext::poeZoneCategory()        const { return FRESH_FIELD("poe", "zoneCategory");         }
+QString IntegrationContext::poeActivity()            const { return FRESH_FIELD("poe", "activity");             }
+QString IntegrationContext::poeCharacter()           const { return FRESH_FIELD("poe", "character");            }
+QString IntegrationContext::poeCharacterClass()      const { return FRESH_FIELD("poe", "characterClass");       }
+QString IntegrationContext::poeLevel()               const { return FRESH_FIELD("poe", "level");                }
+QString IntegrationContext::poeDeaths()              const { return FRESH_FIELD("poe", "deaths");               }
+QString IntegrationContext::poeAfk()                 const { return FRESH_FIELD("poe", "afk");                  }
+QString IntegrationContext::poeFocused()             const { return FRESH_FIELD("poe", "focused");              }
 
 #undef FRESH_FIELD
 

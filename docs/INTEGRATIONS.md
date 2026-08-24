@@ -300,6 +300,47 @@ integrations/vscode/
 
 ---
 
+## 4a. Path of Exile (in-process log watcher — no HTTP POST)
+
+Unlike the integrations above, Path of Exile has no plugin API and never
+handshakes on the Discord IPC pipe, so there is nothing to intercept or POST
+to. Instead OmniPresence tails the game's own plain-text activity log
+in-process and writes straight into `IntegrationContext` under source `"poe"`
+— the same mechanism the RuneLite pipe interceptor uses, not the HTTP
+`/integrations/<source>/context` path. See
+`docs/superpowers/specs/2026-08-11-path-of-exile-integration-design.md` for
+the full design and `docs/DECISIONS.md` for the ADR.
+
+**Source components:** `PoeLogWatcher` (tails `LatestClient.txt`/`Client.txt`,
+1 s poll) → `PoeActivityInferencer` (parses an allowlist of line forms only —
+chat/whispers are never parsed) → `AppController` writes the result into
+`IntegrationContext`.
+
+**Resulting context fields** (consumed via `{{poe.*}}` template variables):
+
+| Field | Description |
+|---|---|
+| `zone` | Current zone name, e.g. `"Cartographer's Hideout"` |
+| `zoneCategory` | From `config/poe-zones.json`: `hideout`/`town`/`map`/`campaign`/`delve`/`labyrinth`/`sanctum`/`heist`/`menagerie`/`boss`/`memory`/`simulacrum`/`other`/`unknown` |
+| `activity` | Display verb derived from `zoneCategory`, e.g. `"Mapping"` |
+| `character` / `characterClass` / `level` | Only populated once a **configured** character (see below) has levelled up this session — otherwise omitted entirely, never guessed |
+| `deaths` | Session death count for the configured character only |
+| `afk` | `"true"`/`"false"` — from the client's `AFK mode is now ON/OFF.` line |
+| `focused` | `"true"`/`"false"` — from the client's own `[WINDOW] Gained/Lost focus` line |
+
+**Character identity is opt-in.** The log has no login or character-select
+line, and level-up/death lines fire for every player nearby — not just the
+local one. Configure `poe.characters` in config JSON with the exact character
+name(s); with none configured, presence is zone-only (no character name/class/
+level/deaths shown), matching the account-name opt-in already used for
+RuneLite.
+
+**Privacy:** the log carries whispers and public chat verbatim. The parser
+operates on a strict allowlist of line forms — chat is never parsed, stored,
+forwarded, or logged.
+
+---
+
 ## 5. Manual Context / Pinned Presence
 
 There is no external integration for manual overrides — these are set directly in the OmniPresence GUI:

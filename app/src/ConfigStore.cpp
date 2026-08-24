@@ -181,6 +181,32 @@ static CustomOverrideConfig customConfigFromJson(const QJsonObject& obj) {
     return cfg;
 }
 
+// ── PoeConfig JSON helpers ──────────────────────────────────────────────────────
+
+static QJsonObject poeConfigToJson(const PoeConfig& cfg) {
+    QJsonObject obj;
+    QJsonArray characters;
+    for (const QString& c : cfg.characters) characters.append(c);
+    obj[QStringLiteral("characters")] = characters;
+    obj[QStringLiteral("logPath")]    = cfg.logPathOverride;
+    return obj;
+}
+
+// A missing "poe" object (or missing "characters") leaves the list empty —
+// the shipped default. With no configured character, PoeActivityInferencer
+// omits character/class/level/deaths from presence entirely rather than
+// guessing (see the design's rejection of a "most frequent name" heuristic).
+static PoeConfig poeConfigFromJson(const QJsonObject& obj) {
+    PoeConfig cfg;
+    const QJsonArray characters = obj.value(QStringLiteral("characters")).toArray();
+    for (const QJsonValue& v : characters) {
+        const QString name = v.toString().trimmed();
+        if (!name.isEmpty()) cfg.characters << name;
+    }
+    cfg.logPathOverride = obj.value(QStringLiteral("logPath")).toString();
+    return cfg;
+}
+
 // ── ConfigStore ───────────────────────────────────────────────────────────────
 
 ConfigStore::ConfigStore(QObject* parent)
@@ -214,6 +240,7 @@ bool ConfigStore::load() {
         // fresh install still gets enabled=true, 120 s / 600 s, etc.
         m_idleConfig = idleConfigFromJson(QJsonObject());
         m_customConfig = customConfigFromJson(QJsonObject());   // off by default
+        m_poeConfig = poeConfigFromJson(QJsonObject());         // no characters by default
         emit configLoaded();
         return true;   // Fresh install — defaults are fine.
     }
@@ -312,6 +339,9 @@ bool ConfigStore::parseJson(const QByteArray& rawData) {
     // Custom-override (the "Custom" tab). Optional top-level object — absent =
     // override off (see customConfigFromJson).
     m_customConfig = customConfigFromJson(root.value(QStringLiteral("custom")).toObject());
+    // Path of Exile integration. Optional top-level object — absent = no
+    // configured character (see poeConfigFromJson).
+    m_poeConfig = poeConfigFromJson(root.value(QStringLiteral("poe")).toObject());
     // Art-asset metadata (key -> hover text). Optional top-level object.
     m_assetKeys.clear();
     const QJsonObject assets = root.value(QStringLiteral("assetKeys")).toObject();
@@ -357,6 +387,7 @@ QByteArray ConfigStore::serialiseJson() const {
     root[QStringLiteral("rules")] = m_ruleSet.toJson().value(QStringLiteral("rules"));
     root[QStringLiteral("idle")] = idleConfigToJson(m_idleConfig);
     root[QStringLiteral("custom")] = customConfigToJson(m_customConfig);
+    root[QStringLiteral("poe")]    = poeConfigToJson(m_poeConfig);
     QJsonObject assets;
     for (auto it = m_assetKeys.constBegin(); it != m_assetKeys.constEnd(); ++it)
         assets[it.key()] = it.value();

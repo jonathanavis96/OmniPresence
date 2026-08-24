@@ -260,6 +260,12 @@ std::optional<Rule> RuleEngine::matchRule(const QList<Rule>&        sortedRules,
                     (wt.contains(QLatin1String("runelite")) ||
                      wt.contains(QLatin1String("old school"))))) {
             activeIntegrationSource = QStringLiteral("runelite");
+        } else if (pn.contains(QLatin1String("pathofexile"))) {
+            // Matches PathOfExileSteam.exe / PathOfExile.exe / PathOfExile_x64Steam.exe
+            // etc. — deliberately NOT "Path of Building.exe" or "Awakened PoE
+            // Trade.exe" (companion tools tracked separately in the icon
+            // backlog), which don't contain this substring.
+            activeIntegrationSource = QStringLiteral("poe");
         } else if (pn == QLatin1String("code.exe")) {
             activeIntegrationSource = QStringLiteral("vscode");
         } else if (pn.contains(QLatin1String("terminal")) ||

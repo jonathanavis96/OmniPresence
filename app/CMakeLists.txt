@@ -28,6 +28,9 @@ set(OMNIPRESENCE_SOURCES
     src/NamedPipeInterceptor.cpp
     src/InputIdleMonitor.cpp
     src/ConfigStore.cpp
+    src/PoeZoneTable.cpp
+    src/PoeActivityInferencer.cpp
+    src/PoeLogWatcher.cpp
     src/AppController.cpp
 )
 
@@ -51,6 +54,9 @@ set(OMNIPRESENCE_HEADERS
     include/NamedPipeInterceptor.h
     include/InputIdleMonitor.h
     include/ConfigStore.h
+    include/PoeZoneTable.h
+    include/PoeActivityInferencer.h
+    include/PoeLogWatcher.h
     include/AppController.h
 )
 list(APPEND OMNIPRESENCE_SOURCES ${OMNIPRESENCE_HEADERS})
@@ -160,6 +166,19 @@ if(OMNIPRESENCE_WITH_DISCORD)
             "$<TARGET_FILE_DIR:omnipresence>"
         COMMENT "Copying discord_partner_sdk.dll next to omnipresence.exe")
 endif()
+
+# ── Path of Exile zone table ──────────────────────────────────────────────────
+# AppController resolves config/poe-zones.json next to the exe first (this
+# copy), falling back to the repo-relative dev path. Without this a packaged
+# Windows build would find no zone table at all, since it doesn't run from
+# the source tree.
+add_custom_command(TARGET omnipresence POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:omnipresence>/config"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/config/poe-zones.json"
+        "$<TARGET_FILE_DIR:omnipresence>/config/poe-zones.json"
+    COMMENT "Copying config/poe-zones.json next to omnipresence.exe")
 
 # ── Compiler warnings ─────────────────────────────────────────────────────────
 if(MSVC)

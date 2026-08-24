@@ -182,6 +182,29 @@
 
 ---
 
+## Phase 12 — Path of Exile Integration
+
+Implemented per `docs/superpowers/specs/2026-08-11-path-of-exile-integration-design.md`.
+Not yet compiled/run on a real Windows box with a live PoE client — see the
+top of `CMakeLists.txt`; this repo does not build on the Linux/WSL dev box.
+
+| Item | Status | Notes |
+|---|---|---|
+| `config/poe-zones.json` (352-zone table) | Implemented | Patterns + exact lookups + ambiguous list; independently verified all 352 classify |
+| `PoeZoneTable` (`app/{include,src}/PoeZoneTable.*`) | Implemented | Loads the JSON table; zone name -> category, "unknown" fallback |
+| `PoeActivityInferencer` (`app/{include,src}/PoeActivityInferencer.*`) | Implemented | Pure parsing/session state; privacy allowlist; rejects "most frequent name" heuristic |
+| `PoeLogWatcher` (`app/{include,src}/PoeLogWatcher.*`) | Implemented | 1 s poll, delta read, partial-line buffering, truncation handling, path auto-resolution |
+| `AppController` wiring (watcher -> inferencer -> `IntegrationContext["poe"]`) | Implemented | Mirrors the RuneLite path; 30 s keep-alive re-stamp while PoE is focused |
+| `ConfigStore` — `poe.characters` / `poe.logPath` | Implemented | No configured character = character/class/level/deaths simply omitted |
+| `TemplateEngine` — `{{poe.*}}` variables + derived `{{poe.state}}` | Implemented | |
+| `RuleEngine` — `poe` integration-source detection (process name) | Implemented | Matches `PathOfExileSteam.exe` / `PathOfExile*.exe`, not the companion tools |
+| Example rule in `config/omnipresence.example.json` | Implemented | Existing generic "Path of Exile" rule upgraded to use the integration source |
+| Tests: `test_poe_zones`, `test_poe_inferencer`, `test_poe_log_watcher` | Implemented | See test files for exact cases covered |
+| Per-category icon assets (`poe_hideout`, `poe_map`, ...) | Not started | Rule model has one static `largeImageKey` per rule (same limitation the RuneLite rule already has) — dynamic per-category icon switching is a separate, larger change |
+| Real Windows build + live-client verification | Not started | Cannot build/run outside Windows; all tests above exercise synthetic (design-doc-accurate) input, not a captured log |
+
+---
+
 ## Next Recommended Steps
 
 1. **On a Windows 11 machine:** Install Qt 6, CMake, Visual Studio 2022, download the Discord Social SDK, and create the initial `CMakeLists.txt` to confirm the build toolchain works end-to-end.

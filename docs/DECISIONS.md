@@ -200,3 +200,40 @@ stale and publish a **blank name** → Discord showed the bare "OmniPresence".
 Fixed by (a) a focus-gated RuneLite keep-alive that re-stamps the payload every 30 s
 while RuneLite is the focused window, and (b) an empty-name guard in `RuleEngine`
 that never lets a rule publish a blank activity name.
+
+## Path of Exile: in-process log tailer, not a sidecar or a plugin (2026-08-24)
+
+**Decision:** implemented per
+`docs/superpowers/specs/2026-08-11-path-of-exile-integration-design.md` as an
+in-app `PoeLogWatcher` (`app/src/PoeLogWatcher.cpp`) that tails
+`LatestClient.txt`/`Client.txt`, a pure `PoeActivityInferencer`
+(`app/src/PoeActivityInferencer.cpp`) that parses lines against a strict
+allowlist, and `PoeZoneTable` (`app/src/PoeZoneTable.cpp`) loading the shipped
+`config/poe-zones.json`. Like the RuneLite pipe interceptor, this writes
+directly into `IntegrationContext` under source `"poe"` — it does not POST to
+the local HTTP context server, unlike the browser/terminal/VS Code
+integrations documented in `docs/INTEGRATIONS.md`.
+
+**Two decisions the design doc left to the implementer, recorded here per its
+own "you decide and record the decision in the PR" instruction:**
+
+1. **Per-category `{{poe.activity}}` display verbs** ("Mapping", "In Hideout",
+   "Running Delve", ...) — the design gives three examples but not an
+   exhaustive mapping for all 13 zone categories. The remaining ones
+   (`campaign` → "Adventuring", `boss` → "Boss Fight", `memory` → "Exploring a
+   Memory", etc.) are picked in `PoeActivityInferencer::activityForCategory()`.
+2. **Elapsed-timer reset granularity.** The design's presence-output table
+   says the timestamp should reflect zone-entry time (`docs/superpowers/specs/2026-08-11-...`
+   §"Presence output"). `RuleEngine`'s `TimestampMode` only supports resetting
+   on rule-category change (matching the existing RuneLite rule), not on an
+   arbitrary context field changing per-line. The PoE rule uses
+   `TimestampMode::CategoryChange`, so the elapsed timer resets when you enter
+   vs. leave PoE, not on every zone change within a session. A true per-zone
+   reset would need a new `TimestampMode` variant reading `{{poe.zoneEnteredAt}}`
+   directly — left as a follow-up, not implemented here.
+
+**Not implemented:** per-category icon assets (`poe_hideout`, `poe_map`, ...).
+`Rule` has one static `largeImageKey`, the same limitation the existing
+RuneLite rule already has (its icon doesn't vary by activity either) — dynamic
+per-value icon switching would be a separate, larger change to `Rule`/
+`RuleEngine`, not specific to PoE.
