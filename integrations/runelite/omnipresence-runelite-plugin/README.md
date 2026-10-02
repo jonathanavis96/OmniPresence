@@ -59,7 +59,7 @@ The `account` field is omitted unless **Share account name** is enabled.
 ## Privacy
 
 - **Account name off by default.** Enable it in the plugin config only if you want it in your Rich Presence.
-- **No chat content is ever forwarded.** The `ChatMessage` subscription exists solely to detect system-level game-state transitions (e.g. login messages); raw message text is never stored or sent.
+- **No chat content is ever read or forwarded.** The plugin does not subscribe to `ChatMessage`.
 - **Localhost only.** The endpoint is `127.0.0.1`; no data leaves your machine.
 - **No external dependencies.** OkHttp and Gson are provided by the RuneLite client at runtime.
 

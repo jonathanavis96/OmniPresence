@@ -288,6 +288,12 @@ public class ActivityInferencer {
      */
     private InferenceResult applyAfkHold(InferenceResult result) {
         final long now = clock.getAsLong();
+        if ("Logged out".equals(result.getActivity())) {
+            // Never hold across a session boundary, and never hold "Logged out"
+            // itself (it would mask the first idle readings after login).
+            lastRealActivity = null;
+            return result;
+        }
         if (!"Idle".equals(result.getActivity())) {
             lastRealActivity = result;
             lastRealActivityMs = now;

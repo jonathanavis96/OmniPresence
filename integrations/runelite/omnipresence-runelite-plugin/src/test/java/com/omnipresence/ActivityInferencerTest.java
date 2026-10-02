@@ -309,6 +309,35 @@ public class ActivityInferencerTest {
         assertEquals(1.0, result.getConfidence(), 0.001);
     }
 
+    @Test
+    public void loginAfterLogout_idleIsNotHeldAsLoggedOut() {
+        // "Logged out" must not enter the AFK hold: after logging back in with
+        // nothing observed yet, the player is AFK, not "Logged out" for 2 minutes.
+        long[] now = {0L};
+        inferencer.setClock(() -> now[0]);
+        inferencer.infer(null, -1, -1, -1, false, false);
+        now[0] = 5_000L;
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, -1, -1, false, true
+        );
+        assertEquals("AFK", result.getActivity());
+    }
+
+    @Test
+    public void logout_dropsHeldActivity() {
+        // A pre-logout activity must not resurface after the next login.
+        long[] now = {0L};
+        inferencer.setClock(() -> now[0]);
+        inferencer.infer("Zulrah", -1, -1, 9007, false, true);
+        now[0] = 1_000L;
+        inferencer.infer(null, -1, -1, -1, false, false);
+        now[0] = 2_000L;
+        ActivityInferencer.InferenceResult result = inferencer.infer(
+            null, -1, -1, -1, false, true
+        );
+        assertEquals("AFK", result.getActivity());
+    }
+
     // ---------------------------------------------------------------------------
     // Grand Exchange
     // ---------------------------------------------------------------------------
