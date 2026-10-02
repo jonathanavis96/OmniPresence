@@ -10,6 +10,7 @@ import { getCategoryForDomain, detectDashboard, detectBrowser } from "./categori
 
 const ENDPOINT = "http://127.0.0.1:47831/integrations/browser/context";
 const DEBOUNCE_MS = 1500;
+const POST_TIMEOUT_MS = 3000; // same budget as the VS Code bridge
 
 let debounceTimer = null;
 
@@ -36,7 +37,7 @@ async function loadState() {
  * @param {{enabled: boolean, whitelist: Record<string, boolean>}} state
  * @returns {object|null} null if we should not report (e.g. extension off, no URL)
  */
-function buildPayload(tab, state) {
+export function buildPayload(tab, state) {
   if (!state.enabled) return null;
 
   const rawUrl = tab.url || "";
@@ -107,20 +108,22 @@ function buildPayload(tab, state) {
  * @param {URL} url
  * @returns {string|null}
  */
-function labelFromUrl(url) {
-  try {
-    const segs = url.pathname.split("/").filter(Boolean);
-    for (let i = segs.length - 1; i >= 0; i--) {
-      let s = decodeURIComponent(segs[i]).replace(/\.[a-z0-9]{1,5}$/i, ""); // drop file ext
-      if (/^\d+$/.test(s)) continue;            // pure numeric id
-      if (/^[0-9a-f]{8,}$/i.test(s)) continue;  // hash / long id
-      s = s.replace(/[-_+]+/g, " ").trim();
-      if (s.length >= 2) {
-        return s.replace(/\b\w/g, (c) => c.toUpperCase());
-      }
+export function labelFromUrl(url) {
+  const segs = url.pathname.split("/").filter(Boolean);
+  for (let i = segs.length - 1; i >= 0; i--) {
+    let s;
+    try {
+      s = decodeURIComponent(segs[i]);
+    } catch {
+      continue; // malformed percent-escape in this segment — try the next one
     }
-  } catch {
-    // malformed URL — ignore
+    s = s.replace(/\.[a-z0-9]{1,5}$/i, ""); // drop file ext
+    if (/^\d+$/.test(s)) continue;            // pure numeric id
+    if (/^[0-9a-f]{8,}$/i.test(s)) continue;  // hash / long id
+    s = s.replace(/[-_+]+/g, " ").trim();
+    if (s.length >= 2) {
+      return s.replace(/\b\w/g, (c) => c.toUpperCase());
+    }
   }
   return null;
 }
@@ -129,14 +132,18 @@ function labelFromUrl(url) {
 
 /**
  * POST payload to OmniPresence. Fails silently if the server is not running.
+ * Times out so a server that accepts the connection but never answers cannot
+ * keep the service worker waiting indefinitely.
  * @param {object} payload
+ * @param {number} [timeoutMs]
  */
-async function postContext(payload) {
+export async function postContext(payload, timeoutMs = POST_TIMEOUT_MS) {
   try {
     await fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     // OmniPresence not running — ignore
