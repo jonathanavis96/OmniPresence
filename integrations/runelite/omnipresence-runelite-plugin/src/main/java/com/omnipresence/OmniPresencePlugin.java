@@ -12,12 +12,10 @@ import net.runelite.api.Skill;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
-import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.NpcDespawned;
-import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.client.config.ConfigManager;
@@ -41,8 +39,7 @@ import java.util.concurrent.TimeUnit;
  *
  * Privacy rules enforced here:
  *   - Account name is only included when the user explicitly enables it.
- *   - Chat messages are observed ONLY to detect bank/interface states via
- *     system-message patterns; raw chat text is NEVER forwarded.
+ *   - Chat messages are not observed or forwarded.
  *   - Payloads stay on 127.0.0.1 — no external network calls.
  */
 @Slf4j
@@ -144,8 +141,12 @@ public class OmniPresencePlugin extends Plugin {
         if (scheduledTask != null) {
             scheduledTask.cancel(false);
         }
-        scheduler.shutdown();
-        publisher.shutdown();
+        if (scheduler != null) {
+            scheduler.shutdown();
+        }
+        if (publisher != null) {
+            publisher.shutdown();
+        }
         log.info("OmniPresence plugin stopped");
     }
 
@@ -160,8 +161,15 @@ public class OmniPresencePlugin extends Plugin {
 
     @Subscribe
     public void onGameStateChanged(GameStateChanged event) {
-        loggedIn = event.getGameState() == GameState.LOGGED_IN;
-        if (!loggedIn) {
+        // LOADING (every map-region load) and HOPPING (world hop) are transient
+        // states inside a live session; treating them as logout flashed "Logged
+        // out" and wiped bank/NPC state on each hop and region change.
+        final GameState state = event.getGameState();
+        if (state == GameState.LOADING) {
+            return;
+        }
+        loggedIn = state == GameState.LOGGED_IN || state == GameState.HOPPING;
+        if (!loggedIn || state == GameState.HOPPING) {
             interactingNpcName = null;
             currentAnimation = -1;
             recentXpSkillIndex = -1;
@@ -246,27 +254,12 @@ public class OmniPresencePlugin extends Plugin {
     }
 
     @Subscribe
-    public void onNpcSpawned(NpcSpawned event) {
-        // Reserved for area-based inference (e.g. boss rooms).
-    }
-
-    @Subscribe
     public void onNpcDespawned(NpcDespawned event) {
         // If the NPC we were tracking despawns, clear the interaction.
         if (event.getNpc().getName() != null
                 && event.getNpc().getName().equals(interactingNpcName)) {
             interactingNpcName = null;
         }
-    }
-
-    /**
-     * ChatMessage is subscribed to ONLY for detecting game-state transitions
-     * (e.g. "Welcome to Old School RuneScape" on login). Raw text is never
-     * forwarded or stored beyond this check.
-     */
-    @Subscribe
-    public void onChatMessage(ChatMessage event) {
-        // (No chat content is currently used — placeholder for safe system-message checks.)
     }
 
     /**
@@ -300,6 +293,15 @@ public class OmniPresencePlugin extends Plugin {
     }
 
     private void maybPublish() {
+        // An uncaught exception would cancel every later run of the fixed-rate task.
+        try {
+            publishIfChanged();
+        } catch (RuntimeException e) {
+            log.debug("OmniPresence: publish tick failed", e);
+        }
+    }
+
+    private void publishIfChanged() {
         if (!config.enabled()) {
             return;
         }
