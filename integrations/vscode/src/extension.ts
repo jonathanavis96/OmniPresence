@@ -9,6 +9,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
+import { findRepoForPath } from "./repoMatch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,11 +64,7 @@ async function getGitInfo(
         : (await gitExt.activate()).getAPI(1);
 
       if (gitApi) {
-        const repo = gitApi.repositories.find(
-          (r: { rootUri: vscode.Uri }) =>
-            r.rootUri.fsPath === fsPath ||
-            fsPath.startsWith(r.rootUri.fsPath)
-        );
+        const repo = findRepoForPath(gitApi.repositories as any[], fsPath);
         if (repo) {
           const head = repo.state?.HEAD;
           const branch = head?.name ?? null;
