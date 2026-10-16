@@ -250,6 +250,7 @@ private slots:
 
 private:
     void evaluateAndPublish();
+    void setIdleThreshold(quint64 IdleConfig::*field, int minutes);
 
     /// Rewrite an arbitrary user image as a 1024x1024 transparent-padded PNG in
     /// the temp dir and return its path ("" if the source isn't a readable
