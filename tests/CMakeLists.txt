@@ -1,6 +1,6 @@
 # tests/CMakeLists.txt — QtTest harness for pure-logic units.
 # Each test file is its own executable (one QTEST_MAIN per exe).
-find_package(Qt6 REQUIRED COMPONENTS Test Core Gui)
+find_package(Qt6 REQUIRED COMPONENTS Test Core Gui Network)
 
 set(CMAKE_AUTOMOC ON)
 set(OMNI_TEST_SRC ${CMAKE_SOURCE_DIR}/app/src)
@@ -115,3 +115,14 @@ target_include_directories(test_rule_engine_render PRIVATE ${CMAKE_SOURCE_DIR}/a
 target_link_libraries(test_rule_engine_render PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME test_rule_engine_render COMMAND test_rule_engine_render)
 omni_make_test_selfcontained(test_rule_engine_render)
+
+add_executable(test_local_context_server
+    test_local_context_server.cpp
+    ${OMNI_TEST_SRC}/LocalContextServer.cpp
+    ${OMNI_TEST_SRC}/IntegrationContext.cpp
+    ${CMAKE_SOURCE_DIR}/app/include/LocalContextServer.h   # AUTOMOC scans Q_OBJECT header
+)
+target_include_directories(test_local_context_server PRIVATE ${CMAKE_SOURCE_DIR}/app/include)
+target_link_libraries(test_local_context_server PRIVATE Qt6::Test Qt6::Core Qt6::Network)
+add_test(NAME test_local_context_server COMMAND test_local_context_server)
+omni_make_test_selfcontained(test_local_context_server)
