@@ -343,7 +343,7 @@ bool ConfigStore::parseJson(const QByteArray& rawData) {
                           || (bak.open(QIODevice::WriteOnly) && bak.write(rawData) == rawData.size()
                               && bak.commit());
         const QString msg = QStringLiteral("ConfigStore: JSON parse error — %1%2")
-                                .arg(problem, kept ? QStringLiteral(" (original kept at %1)").arg(backup)
+                                .arg(problem, kept ? QStringLiteral(" (a copy is kept at %1)").arg(backup)
                                                    : QString());
         qWarning() << msg;
         emit configError(msg);
