@@ -33,9 +33,6 @@ signals:
     /// Emitted after the debounce window has elapsed and the focused window
     /// has been stable for at least the required stability period.
     void activeWindowChanged(const OmniPresence::WindowInfo& info);
-
-    /// Emitted when an error prevents window detection (e.g. access denied).
-    void watcherError(const QString& message);
 };
 
 /// Factory — picks Win32 implementation on Windows, Stub on every other platform.

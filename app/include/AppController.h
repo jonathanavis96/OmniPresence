@@ -206,10 +206,6 @@ public:
     /// app-coverage.log — every focused app + whether it resolved to an icon.
     Q_INVOKABLE QString      appCoverageLog() const;
 
-    // Accessors for the tray menu (non-QML)
-    ConfigStore*           configStore()    const noexcept { return m_configStore.get(); }
-    DiscordPresenceClient* discordClient()  const noexcept { return m_discordClient.get(); }
-
 signals:
     void windowChanged();
     void presenceChanged();
