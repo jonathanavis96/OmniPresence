@@ -43,10 +43,6 @@ void LocalContextServer::stop() {
     m_server.close();
 }
 
-bool LocalContextServer::isListening() const {
-    return m_server.isListening();
-}
-
 // ── New connection ────────────────────────────────────────────────────────────
 
 void LocalContextServer::onNewConnection() {

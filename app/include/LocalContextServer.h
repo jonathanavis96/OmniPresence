@@ -28,7 +28,6 @@ public:
     bool start();
     void stop();
 
-    [[nodiscard]] bool isListening()  const;
     /// The bound port once listening (resolves a requested port of 0), else the requested one.
     [[nodiscard]] quint16 listenPort() const {
         return m_server.isListening() ? m_server.serverPort() : m_port;

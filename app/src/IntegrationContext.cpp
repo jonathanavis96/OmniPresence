@@ -39,10 +39,6 @@ const IntegrationPayload* IntegrationContext::getFresh(const QString& source) co
     return (p && p->isFresh()) ? p : nullptr;
 }
 
-void IntegrationContext::clear(const QString& source) {
-    m_payloads.remove(source);
-}
-
 // ── Convenience accessors ─────────────────────────────────────────────────────
 
 QString IntegrationContext::freshField(const QString& source, const QString& key) const {

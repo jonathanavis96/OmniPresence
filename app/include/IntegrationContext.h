@@ -43,9 +43,6 @@ public:
     /// Retrieve only if the payload is still within its freshness window.
     [[nodiscard]] const IntegrationPayload* getFresh(const QString& source) const;
 
-    /// Clear a specific source.
-    void clear(const QString& source);
-
     // ── Convenience accessors for well-known fields ───────────────────────────
     /// `key` from `source`'s payload as a string, or empty unless that payload is fresh.
     [[nodiscard]] QString freshField(const QString& source, const QString& key) const;
