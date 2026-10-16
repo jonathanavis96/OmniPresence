@@ -296,6 +296,15 @@ private slots:
         QFile bak(path + QStringLiteral(".corrupt"));
         QVERIFY(bak.open(QIODevice::ReadOnly));
         QCOMPARE(bak.readAll(), bytes);
+        bak.close();
+
+        // A second failed load (here, an emptied file) must not replace the
+        // earlier backup, which holds the user's rules.
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.close();
+        QVERIFY(!a.load());
+        QVERIFY(bak.open(QIODevice::ReadOnly));
+        QCOMPARE(bak.readAll(), bytes);
     }
 
     // Valid JSON whose root is not an object carries no settings; it must fail
@@ -315,15 +324,15 @@ private slots:
         QVERIFY(QFile::exists(path + QStringLiteral(".corrupt")));
     }
 
-    // Negative or zero idle thresholds fall back to the defaults rather than
-    // wrapping to ~1.8e19 s (idle never fires) or 0 s (always AFK).
-    void idleThresholdsRejectNonPositive() {
+    // Negative or sub-second idle thresholds fall back to the defaults rather
+    // than wrapping to ~1.8e19 s (idle never fires) or truncating to 0 s (always AFK).
+    void idleThresholdsRejectBelowOneSecond() {
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
         const QString path = tmp.filePath(QStringLiteral("idle-negative.json"));
         QFile f(path);
         QVERIFY(f.open(QIODevice::WriteOnly));
-        f.write(QByteArrayLiteral(R"({ "idle": { "afkSeconds": -5, "awaySeconds": 0 } })"));
+        f.write(QByteArrayLiteral(R"({ "idle": { "afkSeconds": -5, "awaySeconds": 0.5 } })"));
         f.close();
 
         ConfigStore a;

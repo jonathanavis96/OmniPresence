@@ -87,10 +87,11 @@ static QJsonObject idleConfigToJson(const IdleConfig& cfg) {
 // defaults below, matching config/omnipresence.example.json's "idle" block.
 // A threshold must be a positive number of seconds. Casting a negative double to
 // quint64 is undefined (in practice it wraps to ~1.8e19, so idle never fires), and
-// 0 would mark the user AFK permanently — fall back to the default instead.
+// anything under 1 s truncates to 0, marking the user AFK permanently — fall back
+// to the default instead.
 static quint64 idleSeconds(const QJsonValue& v, quint64 fallback) {
     const double d = v.toDouble(static_cast<double>(fallback));
-    return (d > 0 && d < 1e12) ? static_cast<quint64>(d) : fallback;
+    return (d >= 1 && d < 1e12) ? static_cast<quint64>(d) : fallback;
 }
 
 static IdleConfig idleConfigFromJson(const QJsonObject& obj) {
@@ -334,10 +335,13 @@ bool ConfigStore::parseJson(const QByteArray& rawData) {
         // Any later save() (every settings toggle saves) overwrites this file
         // with in-memory state, which is defaults on a first load. Keep the
         // user's bytes beside it so a hand-edit typo cannot cost them their rules.
+        // An existing backup is never replaced: it holds the oldest (likeliest
+        // complete) copy, and a later failure may be an emptied or truncated file.
         const QString backup = m_configPath + QStringLiteral(".corrupt");
         QSaveFile bak(backup);
-        const bool kept = bak.open(QIODevice::WriteOnly) && bak.write(rawData) == rawData.size()
-                          && bak.commit();
+        const bool kept = QFile::exists(backup)
+                          || (bak.open(QIODevice::WriteOnly) && bak.write(rawData) == rawData.size()
+                              && bak.commit());
         const QString msg = QStringLiteral("ConfigStore: JSON parse error — %1%2")
                                 .arg(problem, kept ? QStringLiteral(" (original kept at %1)").arg(backup)
                                                    : QString());
