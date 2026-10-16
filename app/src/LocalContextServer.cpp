@@ -73,20 +73,26 @@ void LocalContextServer::onNewConnection() {
 
 // ── Request handling ──────────────────────────────────────────────────────────
 
+// Offset of the body (just past the blank line ending the headers), or -1.
+static int bodyOffset(const QByteArray& raw) {
+    const int crlf = raw.indexOf("\r\n\r\n");
+    if (crlf >= 0) return crlf + 4;
+    const int lf = raw.indexOf("\n\n");
+    return lf >= 0 ? lf + 2 : -1;
+}
+
 bool LocalContextServer::requestComplete(const QByteArray& raw) {
-    int headerEnd = raw.indexOf("\r\n\r\n");
-    int sepLen = 4;
-    if (headerEnd < 0) { headerEnd = raw.indexOf("\n\n"); sepLen = 2; }
-    if (headerEnd < 0) return false;
+    const int bodyStart = bodyOffset(raw);
+    if (bodyStart < 0) return false;
 
     // No Content-Length: the body is whatever arrived with the headers.
-    for (const QByteArray& line : raw.left(headerEnd).split('\n')) {
+    for (const QByteArray& line : raw.left(bodyStart).split('\n')) {
         const int colon = line.indexOf(':');
         if (colon < 0 || line.left(colon).trimmed().toLower() != "content-length") continue;
         bool ok = false;
         const qint64 length = line.mid(colon + 1).trimmed().toLongLong(&ok);
-        // A malformed length is not worth waiting on; let handleRequest reject it.
-        return !ok || length < 0 || raw.size() - (headerEnd + sepLen) >= length;
+        // A malformed length is not worth waiting on; handle what has arrived.
+        return !ok || length < 0 || raw.size() - bodyStart >= length;
     }
     return true;
 }
@@ -129,11 +135,8 @@ void LocalContextServer::handleRequest(QTcpSocket* socket, const QByteArray& raw
     }
 
     // ── Extract the body (after the blank line separating headers and body) ───
-    const int bodyStart = raw.indexOf("\r\n\r\n");
-    const int altStart  = raw.indexOf("\n\n");
-    QByteArray body;
-    if (bodyStart >= 0)      body = raw.mid(bodyStart + 4);
-    else if (altStart >= 0)  body = raw.mid(altStart + 2);
+    const int bodyStart = bodyOffset(raw);
+    const QByteArray body = bodyStart >= 0 ? raw.mid(bodyStart) : QByteArray();
 
     if (body.isEmpty()) {
         sendResponse(socket, 400, QStringLiteral("Bad Request"),
