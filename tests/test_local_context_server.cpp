@@ -70,7 +70,7 @@ private slots:
                                "Content-Length: 17\r\n\r\n{\"workspace\":\"w\"}";
         const QByteArray resp = exchange(server.listenPort(), {req});
         QVERIFY2(resp.startsWith("HTTP/1.1 200"), resp.constData());
-        QCOMPARE(ctx.vscodeWorkspace(), QStringLiteral("w"));
+        QCOMPARE(ctx.freshField(QStringLiteral("vscode"), QStringLiteral("workspace")), QStringLiteral("w"));
     }
 };
 

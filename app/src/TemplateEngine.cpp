@@ -35,56 +35,58 @@ TemplateContext TemplateEngine::buildContext(const WindowInfo& window,
         ctx[QStringLiteral("window.doctitle")] = doc;
     }
 
-    // Browser
-    ctx[QStringLiteral("browser.domain")]   = integrations.browserDomain();
-    ctx[QStringLiteral("browser.category")] = integrations.browserCategory();
-    ctx[QStringLiteral("browser.title")]    = integrations.browserTitle();
-    ctx[QStringLiteral("browser.label")]    = integrations.browserLabel();
+    // Integration fields, exposed as "<token>" from <source>'s payload <key> — empty
+    // unless that source's payload is still fresh.
+    static const struct { const char* token; const char* source; const char* key; } kFields[] = {
+        {"browser.domain",           "browser",  "domain"},
+        {"browser.category",         "browser",  "category"},
+        {"browser.title",            "browser",  "safe_title"},   // whitelisted tab title only
+        {"browser.label",            "browser",  "page_label"},
+        {"terminal.cwd",             "terminal", "cwd"},
+        {"terminal.repo",            "terminal", "repo"},
+        {"terminal.command_summary", "terminal", "command_summary"},
+        {"vscode.workspace",         "vscode",   "workspace"},
+        {"runelite.activity",        "runelite", "activity"},
+        {"runelite.target",          "runelite", "target"},
+        {"runelite.skill",           "runelite", "skill"},
+        {"runelite.location",        "runelite", "location"},
+        {"runelite.confidence",      "runelite", "confidence"},
+        {"poe.zone",                 "poe",      "zone"},
+        {"poe.zoneCategory",         "poe",      "zoneCategory"},
+        {"poe.activity",             "poe",      "activity"},
+        {"poe.character",            "poe",      "character"},
+        {"poe.characterClass",       "poe",      "characterClass"},
+        {"poe.level",                "poe",      "level"},
+        {"poe.deaths",               "poe",      "deaths"},
+        {"poe.afk",                  "poe",      "afk"},
+        {"poe.focused",              "poe",      "focused"},
+    };
+    for (const auto& f : kFields)
+        ctx[QLatin1String(f.token)] =
+            integrations.freshField(QLatin1String(f.source), QLatin1String(f.key));
+
     // browser.site — the site's name from its domain (dotabuff.com -> "Dotabuff").
     {
-        const QString dom = integrations.browserDomain();
-        QString site = dom.section(QLatin1Char('.'), 0, 0);  // first label
+        QString site = ctx.value(QStringLiteral("browser.domain")).section(QLatin1Char('.'), 0, 0);
         if (!site.isEmpty()) site[0] = site[0].toUpper();
         ctx[QStringLiteral("browser.site")] = site;
     }
 
-    // Terminal
-    ctx[QStringLiteral("terminal.cwd")]             = integrations.terminalCwd();
-    ctx[QStringLiteral("terminal.repo")]            = integrations.terminalRepo();
-    ctx[QStringLiteral("terminal.command_summary")] = integrations.terminalCommandSummary();
-
-    // VS Code
-    ctx[QStringLiteral("vscode.workspace")] = integrations.vscodeWorkspace();
-
-    // RuneLite
     // runelite.activity is routed through omni::skillLabel so a recognised OSRS
     // skill (e.g. the built-in Discord plugin's "Training: Mining") renders as
     // "Training Mining"/"Training Runecrafting"; non-skill activity (bosses,
     // minigames) passes through verbatim.
-    ctx[QStringLiteral("runelite.activity")]   = omni::skillLabel(integrations.runeliteActivity());
-    ctx[QStringLiteral("runelite.target")]     = integrations.runeliteTarget();
-    ctx[QStringLiteral("runelite.skill")]      = integrations.runeliteSkill();
-    ctx[QStringLiteral("runelite.location")]   = integrations.runeliteLocation();
-    ctx[QStringLiteral("runelite.confidence")] = integrations.runeliteConfidence();
+    ctx[QStringLiteral("runelite.activity")] =
+        omni::skillLabel(ctx.value(QStringLiteral("runelite.activity")));
 
-    // Path of Exile
-    ctx[QStringLiteral("poe.zone")]           = integrations.poeZone();
-    ctx[QStringLiteral("poe.zoneCategory")]   = integrations.poeZoneCategory();
-    ctx[QStringLiteral("poe.activity")]       = integrations.poeActivity();
-    ctx[QStringLiteral("poe.character")]      = integrations.poeCharacter();
-    ctx[QStringLiteral("poe.characterClass")] = integrations.poeCharacterClass();
-    ctx[QStringLiteral("poe.level")]          = integrations.poeLevel();
-    ctx[QStringLiteral("poe.deaths")]         = integrations.poeDeaths();
-    ctx[QStringLiteral("poe.afk")]            = integrations.poeAfk();
-    ctx[QStringLiteral("poe.focused")]        = integrations.poeFocused();
     // poe.state — "<zone> — Level <N> <Class>" once a configured character has
     // levelled up this session, else just the bare zone. Character identity is
     // omitted unless the user opted in (see design doc), so this must degrade
     // to zone-only rather than leaving a dangling "— Level  " fragment.
     {
-        const QString zone  = integrations.poeZone();
-        const QString klass = integrations.poeCharacterClass();
-        const QString level = integrations.poeLevel();
+        const QString zone  = ctx.value(QStringLiteral("poe.zone"));
+        const QString klass = ctx.value(QStringLiteral("poe.characterClass"));
+        const QString level = ctx.value(QStringLiteral("poe.level"));
         QString state = zone;
         if (!klass.isEmpty() && !level.isEmpty()) {
             state = zone.isEmpty()
