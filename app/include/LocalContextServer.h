@@ -28,8 +28,13 @@ public:
     bool start();
     void stop();
 
-    [[nodiscard]] bool isListening()  const;
-    [[nodiscard]] quint16 listenPort() const noexcept { return m_port; }
+    /// The bound port once listening (resolves a requested port of 0), else the requested one.
+    [[nodiscard]] quint16 listenPort() const {
+        return m_server.isListening() ? m_server.serverPort() : m_port;
+    }
+
+    /// Requests larger than this are refused with 413 rather than buffered.
+    static constexpr int MAX_REQUEST_BYTES = 64 * 1024;
 
 signals:
     /// Emitted after IntegrationContext is updated with a new payload.
@@ -41,6 +46,9 @@ private slots:
     void onNewConnection();
 
 private:
+    /// True once `raw` holds the full header block plus Content-Length body bytes.
+    static bool requestComplete(const QByteArray& raw);
+
     /// Parse and dispatch an HTTP request from the raw byte buffer.
     void handleRequest(class QTcpSocket* socket, const QByteArray& raw);
 

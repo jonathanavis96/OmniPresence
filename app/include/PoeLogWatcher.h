@@ -37,8 +37,6 @@ public:
     /// 1 s timer, so tests aren't tied to real wall-clock delay.
     void pollOnceForTest() { poll(); }
 
-    [[nodiscard]] QString resolvedPath() const noexcept { return m_resolvedPath; }
-
 signals:
     /// One complete line (CR/LF already stripped), in the order it appeared.
     void lineRead(const QString& line);

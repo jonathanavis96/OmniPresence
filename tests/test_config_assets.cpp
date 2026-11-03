@@ -277,6 +277,92 @@ private slots:
         QCOMPARE(idx.at(0), 0);
         QCOMPARE(idx.at(1), 2);   // the blank preset at 1 is skipped
     }
+
+    // An unparseable config is copied to <path>.corrupt on load, because the next
+    // save() (any settings toggle) replaces the file with in-memory defaults.
+    void unparseableConfigIsKeptAsCorruptBackup() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString path = tmp.filePath(QStringLiteral("broken.json"));
+        const QByteArray bytes = QByteArrayLiteral(R"({ "rules": [ { "name": "mine", } ] )");
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(bytes);
+        f.close();
+
+        ConfigStore a;
+        a.setConfigPathForTest(path);
+        QVERIFY(!a.load());
+        QFile bak(path + QStringLiteral(".corrupt"));
+        QVERIFY(bak.open(QIODevice::ReadOnly));
+        QCOMPARE(bak.readAll(), bytes);
+        bak.close();
+
+        // A second failed load (here, an emptied file) must not replace the
+        // earlier backup, which holds the user's rules.
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.close();
+        QVERIFY(!a.load());
+        QVERIFY(bak.open(QIODevice::ReadOnly));
+        QCOMPARE(bak.readAll(), bytes);
+    }
+
+    // Valid JSON whose root is not an object carries no settings; it must fail
+    // the load rather than pass as an all-defaults config.
+    void nonObjectRootFailsLoad() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString path = tmp.filePath(QStringLiteral("array-root.json"));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(QByteArrayLiteral("[1, 2]"));
+        f.close();
+
+        ConfigStore a;
+        a.setConfigPathForTest(path);
+        QVERIFY(!a.load());
+        QVERIFY(QFile::exists(path + QStringLiteral(".corrupt")));
+    }
+
+    // Negative or sub-second idle thresholds fall back to the defaults rather
+    // than wrapping to ~1.8e19 s (idle never fires) or truncating to 0 s (always AFK).
+    void idleThresholdsRejectBelowOneSecond() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString path = tmp.filePath(QStringLiteral("idle-negative.json"));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(QByteArrayLiteral(R"({ "idle": { "afkSeconds": -5, "awaySeconds": 0.5 } })"));
+        f.close();
+
+        ConfigStore a;
+        a.setConfigPathForTest(path);
+        QVERIFY(a.load());
+        QCOMPARE(a.idleConfig().afkSeconds,  quint64(120));
+        QCOMPARE(a.idleConfig().awaySeconds, quint64(600));
+    }
+
+    // save() replaces the file atomically and a reload sees exactly what was saved.
+    void saveOverwritesExistingConfig() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString path = tmp.filePath(QStringLiteral("overwrite.json"));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(QByteArray(4096, ' ') + QByteArrayLiteral("{}"));
+        f.close();
+
+        ConfigStore a;
+        a.setConfigPathForTest(path);
+        QVERIFY(a.load());
+        a.setAssetKey(QStringLiteral("k"), QStringLiteral("v"));
+        QVERIFY(a.save());
+
+        ConfigStore b;
+        b.setConfigPathForTest(path);
+        QVERIFY(b.load());
+        QCOMPARE(b.assetKeys().value(QStringLiteral("k")), QStringLiteral("v"));
+    }
 };
 
 QTEST_MAIN(TestConfigAssets)

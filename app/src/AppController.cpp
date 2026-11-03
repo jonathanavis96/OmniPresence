@@ -692,23 +692,16 @@ void AppController::setIdleEnabled(bool enabled) {
     evaluateAndPublish();
 }
 
-void AppController::setIdleAfkMinutes(int minutes) {
-    const quint64 seconds = static_cast<quint64>(minutes > 0 ? minutes : 0) * 60;
-    IdleConfig cfg = m_configStore->idleConfig();
-    if (cfg.afkSeconds == seconds) return;
-    cfg.afkSeconds = seconds;
-    m_configStore->idleConfig() = cfg;
-    m_configStore->save();
-    emit idleConfigChanged();
-    evaluateAndPublish();
-}
+void AppController::setIdleAfkMinutes(int minutes)  { setIdleThreshold(&IdleConfig::afkSeconds, minutes); }
+void AppController::setIdleAwayMinutes(int minutes) { setIdleThreshold(&IdleConfig::awaySeconds, minutes); }
 
-void AppController::setIdleAwayMinutes(int minutes) {
-    const quint64 seconds = static_cast<quint64>(minutes > 0 ? minutes : 0) * 60;
-    IdleConfig cfg = m_configStore->idleConfig();
-    if (cfg.awaySeconds == seconds) return;
-    cfg.awaySeconds = seconds;
-    m_configStore->idleConfig() = cfg;
+// Floor of 1 minute, matching the UI: 0 s would mark the user idle the instant
+// input stops (and ConfigStore rejects a non-positive threshold on reload).
+void AppController::setIdleThreshold(quint64 IdleConfig::*field, int minutes) {
+    const quint64 seconds = static_cast<quint64>(std::max(minutes, 1)) * 60;
+    IdleConfig& cfg = m_configStore->idleConfig();
+    if (cfg.*field == seconds) return;
+    cfg.*field = seconds;
     m_configStore->save();
     emit idleConfigChanged();
     evaluateAndPublish();

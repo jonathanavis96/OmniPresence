@@ -206,10 +206,6 @@ public:
     /// app-coverage.log — every focused app + whether it resolved to an icon.
     Q_INVOKABLE QString      appCoverageLog() const;
 
-    // Accessors for the tray menu (non-QML)
-    ConfigStore*           configStore()    const noexcept { return m_configStore.get(); }
-    DiscordPresenceClient* discordClient()  const noexcept { return m_discordClient.get(); }
-
 signals:
     void windowChanged();
     void presenceChanged();
@@ -254,6 +250,7 @@ private slots:
 
 private:
     void evaluateAndPublish();
+    void setIdleThreshold(quint64 IdleConfig::*field, int minutes);
 
     /// Rewrite an arbitrary user image as a 1024x1024 transparent-padded PNG in
     /// the temp dir and return its path ("" if the source isn't a readable

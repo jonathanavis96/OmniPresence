@@ -1,6 +1,7 @@
 // ConfigStore.cpp — JSON config load/save with %APPDATA% resolution.
 #include "ConfigStore.h"
 #include <QFile>
+#include <QSaveFile>
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -84,11 +85,20 @@ static QJsonObject idleConfigToJson(const IdleConfig& cfg) {
 // Any field missing from the JSON (including the whole "idle" object being
 // absent — obj is then default-constructed/empty) falls back to the shipped
 // defaults below, matching config/omnipresence.example.json's "idle" block.
+// A threshold must be a positive number of seconds. Casting a negative double to
+// quint64 is undefined (in practice it wraps to ~1.8e19, so idle never fires), and
+// anything under 1 s truncates to 0, marking the user AFK permanently — fall back
+// to the default instead.
+static quint64 idleSeconds(const QJsonValue& v, quint64 fallback) {
+    const double d = v.toDouble(static_cast<double>(fallback));
+    return (d >= 1 && d < 1e12) ? static_cast<quint64>(d) : fallback;
+}
+
 static IdleConfig idleConfigFromJson(const QJsonObject& obj) {
     IdleConfig cfg;
     cfg.enabled      = obj[QStringLiteral("enabled")].toBool(true);
-    cfg.afkSeconds   = static_cast<quint64>(obj[QStringLiteral("afkSeconds")].toDouble(120));
-    cfg.awaySeconds  = static_cast<quint64>(obj[QStringLiteral("awaySeconds")].toDouble(600));
+    cfg.afkSeconds   = idleSeconds(obj[QStringLiteral("afkSeconds")], 120);
+    cfg.awaySeconds  = idleSeconds(obj[QStringLiteral("awaySeconds")], 600);
     cfg.afkLabel     = obj[QStringLiteral("afkLabel")].toString(QStringLiteral("AFK"));
     cfg.awayLabel    = obj[QStringLiteral("awayLabel")].toString(QStringLiteral("Away from computer"));
     cfg.awayImageKey = obj[QStringLiteral("awayImageKey")].toString(kDefaultAwayImageKey);
@@ -267,15 +277,18 @@ bool ConfigStore::save() const {
         return false;
     }
 
-    QFile file(m_configPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    // QSaveFile writes a temp file and renames it over the target on commit(),
+    // so a full disk or a crash mid-write leaves the previous config intact
+    // instead of a truncated one that fails to parse on the next start.
+    QSaveFile file(m_configPath);
+    const QByteArray json = serialiseJson();
+    if (!file.open(QIODevice::WriteOnly) || file.write(json) != json.size() || !file.commit()) {
         const QString msg = QStringLiteral("ConfigStore: cannot write %1: %2")
                                 .arg(m_configPath, file.errorString());
         qWarning() << msg;
         const_cast<ConfigStore*>(this)->configError(msg);
         return false;
     }
-    file.write(serialiseJson());
     const_cast<ConfigStore*>(this)->configSaved();
     return true;
 }
@@ -312,8 +325,26 @@ bool ConfigStore::parseJson(const QByteArray& rawData) {
     const QByteArray data = migrateAssetBranchUrls(rawData);
     QJsonParseError err;
     const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
-    if (err.error != QJsonParseError::NoError) {
-        const QString msg = QStringLiteral("ConfigStore: JSON parse error — %1").arg(err.errorString());
+    // A root that parses but is not an object ("[]", "null", a bare string) holds
+    // no settings either; accepting it would load every default and the next
+    // save would silently replace the file.
+    const QString problem = err.error != QJsonParseError::NoError ? err.errorString()
+                          : !doc.isObject() ? QStringLiteral("root is not a JSON object")
+                          : QString();
+    if (!problem.isEmpty()) {
+        // Any later save() (every settings toggle saves) overwrites this file
+        // with in-memory state, which is defaults on a first load. Keep the
+        // user's bytes beside it so a hand-edit typo cannot cost them their rules.
+        // An existing backup is never replaced: it holds the oldest (likeliest
+        // complete) copy, and a later failure may be an emptied or truncated file.
+        const QString backup = m_configPath + QStringLiteral(".corrupt");
+        QSaveFile bak(backup);
+        const bool kept = QFile::exists(backup)
+                          || (bak.open(QIODevice::WriteOnly) && bak.write(rawData) == rawData.size()
+                              && bak.commit());
+        const QString msg = QStringLiteral("ConfigStore: JSON parse error — %1%2")
+                                .arg(problem, kept ? QStringLiteral(" (a copy is kept at %1)").arg(backup)
+                                                   : QString());
         qWarning() << msg;
         emit configError(msg);
         return false;

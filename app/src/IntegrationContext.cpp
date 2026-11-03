@@ -39,51 +39,18 @@ const IntegrationPayload* IntegrationContext::getFresh(const QString& source) co
     return (p && p->isFresh()) ? p : nullptr;
 }
 
-void IntegrationContext::purgeStale() {
-    for (auto it = m_payloads.begin(); it != m_payloads.end(); ) {
-        it->isFresh() ? ++it : it = m_payloads.erase(it);
-    }
-}
-
-void IntegrationContext::clear(const QString& source) {
-    m_payloads.remove(source);
-}
-
-void IntegrationContext::clearAll() {
-    m_payloads.clear();
-}
-
 // ── Convenience accessors ─────────────────────────────────────────────────────
 
-#define FRESH_FIELD(source, key) \
-    [&]() -> QString { \
-        const auto* p = getFresh(QStringLiteral(source)); \
-        return p ? p->field(QStringLiteral(key)) : QString{}; \
-    }()
+QString IntegrationContext::freshField(const QString& source, const QString& key) const {
+    const IntegrationPayload* p = getFresh(source);
+    return p ? p->field(key) : QString{};
+}
 
-QString IntegrationContext::browserDomain()          const { return FRESH_FIELD("browser", "domain");           }
-QString IntegrationContext::browserCategory()        const { return FRESH_FIELD("browser", "category");         }
-QString IntegrationContext::browserTitle()           const { return FRESH_FIELD("browser", "safe_title");       }
-QString IntegrationContext::browserLabel()           const { return FRESH_FIELD("browser", "page_label");       }
-QString IntegrationContext::terminalCwd()            const { return FRESH_FIELD("terminal", "cwd");             }
-QString IntegrationContext::terminalRepo()           const { return FRESH_FIELD("terminal", "repo");            }
-QString IntegrationContext::terminalCommandSummary() const { return FRESH_FIELD("terminal", "command_summary"); }
-QString IntegrationContext::vscodeWorkspace()        const { return FRESH_FIELD("vscode", "workspace");         }
-QString IntegrationContext::runeliteActivity()       const { return FRESH_FIELD("runelite", "activity");        }
-QString IntegrationContext::runeliteTarget()         const { return FRESH_FIELD("runelite", "target");          }
-QString IntegrationContext::runeliteSkill()          const { return FRESH_FIELD("runelite", "skill");           }
-QString IntegrationContext::runeliteLocation()       const { return FRESH_FIELD("runelite", "location");        }
-QString IntegrationContext::runeliteConfidence()     const { return FRESH_FIELD("runelite", "confidence");      }
-QString IntegrationContext::poeZone()                const { return FRESH_FIELD("poe", "zone");                 }
-QString IntegrationContext::poeZoneCategory()        const { return FRESH_FIELD("poe", "zoneCategory");         }
-QString IntegrationContext::poeActivity()            const { return FRESH_FIELD("poe", "activity");             }
-QString IntegrationContext::poeCharacter()           const { return FRESH_FIELD("poe", "character");            }
-QString IntegrationContext::poeCharacterClass()      const { return FRESH_FIELD("poe", "characterClass");       }
-QString IntegrationContext::poeLevel()               const { return FRESH_FIELD("poe", "level");                }
-QString IntegrationContext::poeDeaths()              const { return FRESH_FIELD("poe", "deaths");               }
-QString IntegrationContext::poeAfk()                 const { return FRESH_FIELD("poe", "afk");                  }
-QString IntegrationContext::poeFocused()             const { return FRESH_FIELD("poe", "focused");              }
-
-#undef FRESH_FIELD
+QString IntegrationContext::browserDomain() const {
+    return freshField(QStringLiteral("browser"), QStringLiteral("domain"));
+}
+QString IntegrationContext::browserCategory() const {
+    return freshField(QStringLiteral("browser"), QStringLiteral("category"));
+}
 
 } // namespace OmniPresence

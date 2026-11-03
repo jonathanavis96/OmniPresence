@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDebug>
+#include <memory>
 
 namespace OmniPresence {
 
@@ -42,26 +43,55 @@ void LocalContextServer::stop() {
     m_server.close();
 }
 
-bool LocalContextServer::isListening() const {
-    return m_server.isListening();
-}
-
 // ── New connection ────────────────────────────────────────────────────────────
 
 void LocalContextServer::onNewConnection() {
     while (m_server.hasPendingConnections()) {
         QTcpSocket* socket = m_server.nextPendingConnection();
-        // Read the entire request (simple synchronous read for a loopback connection).
-        // In production this could be made async; for a local-only server it's fine.
-        connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
-            const QByteArray raw = socket->readAll();
-            handleRequest(socket, raw);
+        // A request can arrive across several readyRead signals — fetch() commonly
+        // sends the headers and the body in separate segments — so buffer until
+        // the headers and the Content-Length body are all in, then answer once.
+        auto buffer = std::make_shared<QByteArray>();
+        connect(socket, &QTcpSocket::readyRead, this, [this, socket, buffer]() {
+            buffer->append(socket->readAll());
+            const bool tooLarge = buffer->size() > MAX_REQUEST_BYTES;
+            if (!tooLarge && !requestComplete(*buffer)) return;
+            disconnect(socket, &QTcpSocket::readyRead, this, nullptr);   // one request per connection
+            if (tooLarge)
+                sendResponse(socket, 413, QStringLiteral("Payload Too Large"),
+                             R"({"error":"Request too large"})");
+            else
+                handleRequest(socket, *buffer);
         });
         connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
     }
 }
 
 // ── Request handling ──────────────────────────────────────────────────────────
+
+// Offset of the body (just past the blank line ending the headers), or -1.
+static int bodyOffset(const QByteArray& raw) {
+    const int crlf = raw.indexOf("\r\n\r\n");
+    if (crlf >= 0) return crlf + 4;
+    const int lf = raw.indexOf("\n\n");
+    return lf >= 0 ? lf + 2 : -1;
+}
+
+bool LocalContextServer::requestComplete(const QByteArray& raw) {
+    const int bodyStart = bodyOffset(raw);
+    if (bodyStart < 0) return false;
+
+    // No Content-Length: the body is whatever arrived with the headers.
+    for (const QByteArray& line : raw.left(bodyStart).split('\n')) {
+        const int colon = line.indexOf(':');
+        if (colon < 0 || line.left(colon).trimmed().toLower() != "content-length") continue;
+        bool ok = false;
+        const qint64 length = line.mid(colon + 1).trimmed().toLongLong(&ok);
+        // A malformed length is not worth waiting on; handle what has arrived.
+        return !ok || length < 0 || raw.size() - bodyStart >= length;
+    }
+    return true;
+}
 
 void LocalContextServer::handleRequest(QTcpSocket* socket, const QByteArray& raw) {
     // ── Parse the request line ────────────────────────────────────────────────
@@ -101,11 +131,8 @@ void LocalContextServer::handleRequest(QTcpSocket* socket, const QByteArray& raw
     }
 
     // ── Extract the body (after the blank line separating headers and body) ───
-    const int bodyStart = raw.indexOf("\r\n\r\n");
-    const int altStart  = raw.indexOf("\n\n");
-    QByteArray body;
-    if (bodyStart >= 0)      body = raw.mid(bodyStart + 4);
-    else if (altStart >= 0)  body = raw.mid(altStart + 2);
+    const int bodyStart = bodyOffset(raw);
+    const QByteArray body = bodyStart >= 0 ? raw.mid(bodyStart) : QByteArray();
 
     if (body.isEmpty()) {
         sendResponse(socket, 400, QStringLiteral("Bad Request"),

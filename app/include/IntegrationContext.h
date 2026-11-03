@@ -43,38 +43,11 @@ public:
     /// Retrieve only if the payload is still within its freshness window.
     [[nodiscard]] const IntegrationPayload* getFresh(const QString& source) const;
 
-    /// Evict all stale payloads.
-    void purgeStale();
-
-    /// Clear a specific source.
-    void clear(const QString& source);
-
-    /// Clear everything.
-    void clearAll();
-
     // ── Convenience accessors for well-known fields ───────────────────────────
+    /// `key` from `source`'s payload as a string, or empty unless that payload is fresh.
+    [[nodiscard]] QString freshField(const QString& source, const QString& key) const;
     [[nodiscard]] QString browserDomain()       const;
     [[nodiscard]] QString browserCategory()     const;
-    [[nodiscard]] QString browserTitle()        const;  ///< Whitelisted tab title (safe_title), else empty.
-    [[nodiscard]] QString browserLabel()        const;  ///< Smart label from the URL path (page_label), else empty.
-    [[nodiscard]] QString terminalCwd()         const;
-    [[nodiscard]] QString terminalRepo()        const;
-    [[nodiscard]] QString terminalCommandSummary() const;
-    [[nodiscard]] QString vscodeWorkspace()     const;
-    [[nodiscard]] QString runeliteActivity()    const;
-    [[nodiscard]] QString runeliteTarget()      const;
-    [[nodiscard]] QString runeliteSkill()       const;
-    [[nodiscard]] QString runeliteLocation()    const;
-    [[nodiscard]] QString runeliteConfidence()  const;
-    [[nodiscard]] QString poeZone()             const;
-    [[nodiscard]] QString poeZoneCategory()     const;
-    [[nodiscard]] QString poeActivity()         const;
-    [[nodiscard]] QString poeCharacter()        const;
-    [[nodiscard]] QString poeCharacterClass()   const;
-    [[nodiscard]] QString poeLevel()            const;
-    [[nodiscard]] QString poeDeaths()           const;
-    [[nodiscard]] QString poeAfk()              const;
-    [[nodiscard]] QString poeFocused()          const;
 
 private:
     QMap<QString, IntegrationPayload> m_payloads;

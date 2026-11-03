@@ -29,7 +29,6 @@ public:
     void reset();
 
     [[nodiscard]] int stabilityMs() const noexcept { return m_stabilityMs; }
-    void setStabilityMs(int ms) noexcept { m_stabilityMs = ms; }
 
 private:
     int             m_stabilityMs;
